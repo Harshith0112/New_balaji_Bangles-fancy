@@ -1,0 +1,17 @@
+{
+  "name": "womens-emporium",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Hybrid E-commerce Website for NEW BALAJI BANGLES & FANCY",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "seed": "cd backend && node scripts/seed.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoice - New Balaji Bangles and Fancy</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: #1f2937; max-width: 400px; margin: 0 auto; padding: 24px; }
+    .bill-header { text-align: center; padding-bottom: 16px; margin-bottom: 12px; border-bottom: 2px dashed #9f1239; }
+    .bill-logo { width: 100px; height: 100px; object-fit: contain; margin: 0 auto 8px; display: block; border-radius: 50%; }
+    .store-name { font-size: 16px; font-weight: 700; color: #9f1239; letter-spacing: 0.02em; }
+    .store-tagline { font-size: 11px; color: #6b7280; margin-top: 2px; }
+    .invoice-title { font-size: 20px; font-weight: 700; text-align: center; margin: 16px 0 20px; color: #111; }
+    .meta { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 13px; }
+    .meta span { color: #6b7280; }
+    .customer-box { border: 1px solid #e5e7eb; padding: 12px; margin-bottom: 16px; border-radius: 6px; background: #fafafa; }
+    .customer-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 4px; }
+    .customer-name { font-weight: 600; font-size: 15px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+    th { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e5e7eb; font-weight: 600; color: #374151; background: #f9fafb; }
+    td { padding: 8px 6px; border-bottom: 1px solid #f3f4f6; }
+    th:last-child, td:last-child { text-align: right; }
+    .totals { margin-top: 8px; text-align: right; font-size: 13px; }
+    .totals .row { display: flex; justify-content: flex-end; gap: 24px; padding: 4px 0; }
+    .totals .label { color: #6b7280; min-width: 80px; }
+    .totals .grand { font-weight: 700; font-size: 16px; color: #9f1239; border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 8px; }
+    .footer { text-align: center; margin-top: 24px; padding-top: 12px; border-top: 2px dashed #9f1239; font-size: 12px; color: #6b7280; }
+    .thank { font-weight: 600; color: #374151; margin-bottom: 4px; }
+    @media print {
+      body { padding: 12px; max-width: 100%; }
+      .no-print { display: none; }
+    }
+    input, .editable { border: 1px solid #e5e7eb; padding: 6px 8px; border-radius: 4px; width: 100%; }
+    .editable { min-height: 20px; }
+    .no-print { margin-bottom: 16px; }
+    .no-print button { background: #9f1239; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <p style="margin-bottom:8px;"><strong>Customer name:</strong></p>
+    <input type="text" id="customerName" placeholder="Enter customer name" value="Customer Name" style="margin-bottom:12px;" />
+    <button type="button" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+
+  <div class="bill-header">
+    <img src="../frontend/public/logo.png" alt="New Balaji Bangles and Fancy" class="bill-logo" />
+    <div class="store-name">NEW BALAJI BANGLES & FANCY</div>
+    <div class="store-tagline">Cosmetics • Jewels • Accessories</div>
+  </div>
+
+  <h1 class="invoice-title">INVOICE</h1>
+
+  <div class="meta">
+    <div>
+      <span>Invoice No:</span> <strong id="invNo">INV-001</strong>
+    </div>
+    <div>
+      <span>Date:</span> <strong id="invDate"></strong>
+    </div>
+  </div>
+
+  <div class="customer-box">
+    <div class="customer-label">Customer</div>
+    <div class="customer-name" id="customerDisplay">Customer Name</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Particulars</th>
+        <th>Qty</th>
+        <th>Rate (₹)</th>
+        <th>Amount (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Product / Item description</td>
+        <td>1</td>
+        <td>0.00</td>
+        <td>0.00</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>—</td>
+        <td>—</td>
+        <td>—</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>—</td>
+        <td>—</td>
+        <td>—</td>
+        <td>—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div class="row"><span class="label">Subtotal</span> <span id="subtotal">₹ 0.00</span></div>
+    <div class="row grand"><span class="label">Total</span> <span id="total">₹ 0.00</span></div>
+  </div>
+
+  <div class="footer">
+    <div class="thank">Thank you for your order</div>
+    <div>New Balaji Bangles and Fancy</div>
+  </div>
+
+  <script>
+    document.getElementById('invDate').textContent = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    var customerInput = document.getElementById('customerName');
+    var customerDisplay = document.getElementById('customerDisplay');
+    function updateCustomer() { customerDisplay.textContent = customerInput.value || 'Customer Name'; }
+    customerInput.addEventListener('input', updateCustomer);
+    customerInput.addEventListener('change', updateCustomer);
+    updateCustomer();
+  </script>
+</body>
+</html>

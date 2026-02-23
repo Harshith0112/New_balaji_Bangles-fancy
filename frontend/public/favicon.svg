@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="rose" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e11d48"/>
+      <stop offset="100%" stop-color="#9f1239"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+    <linearGradient id="gem" x1="30%" y1="20%" x2="70%" y2="80%">
+      <stop offset="0%" stop-color="#fef3c7"/>
+      <stop offset="50%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#92400e"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="32" height="32" rx="8" fill="url(#rose)"/>
+  <!-- Bangle: open arc at top -->
+  <path d="M4 13 A 12 12 0 0 1 28 13" stroke="url(#gold)" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- Central jewel (diamond-style gem) -->
+  <path d="M16 9 L20 16 L16 23 L12 16 Z" fill="url(#gem)"/>
+  <path d="M16 9 L16 23 M12 16 L20 16" stroke="rgba(255,255,255,0.35)" stroke-width="0.6" fill="none"/>
+  <circle cx="16" cy="15.5" r="1.8" fill="rgba(255,255,255,0.3)"/>
+  <!-- Left earring: stud + dangling drop -->
+  <circle cx="7" cy="13" r="1.8" fill="url(#gold)"/>
+  <circle cx="7" cy="13" r="0.5" fill="rgba(255,255,255,0.6)"/>
+  <path d="M7 15.2 Q5 18 7 21 Q9 18 7 15.2 Z" fill="url(#gold)"/>
+  <!-- Right earring: stud + dangling drop -->
+  <circle cx="25" cy="13" r="1.8" fill="url(#gold)"/>
+  <circle cx="25" cy="13" r="0.5" fill="rgba(255,255,255,0.6)"/>
+  <path d="M25 15.2 Q23 18 25 21 Q27 18 25 15.2 Z" fill="url(#gold)"/>
+</svg>

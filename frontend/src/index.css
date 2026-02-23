@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply font-body text-gray-800 antialiased;
+}
+
+.font-display {
+  font-family: 'Playfair Display', serif;
+}
+
+.font-body {
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* Smooth scroll and focus styles */
+html {
+  scroll-behavior: smooth;
+}
+
+*:focus-visible {
+  @apply outline-2 outline-offset-2 outline-rose-400;
+}
+
+/* Sticky WhatsApp button stays above content */
+.whatsapp-float {
+  z-index: 50;
+}
+
+/* Rolling cosmetics brands marquee on About page */
+.brand-marquee {
+  display: inline-flex;
+  min-width: 200%;
+  animation: brand-scroll 45s linear infinite;
+}
+
+@keyframes brand-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
