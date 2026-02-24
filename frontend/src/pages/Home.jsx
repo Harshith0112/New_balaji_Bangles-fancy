@@ -20,11 +20,13 @@ export default function Home() {
   const [offer, setOffer] = useState(DEFAULT_OFFER);
   const [banners, setBanners] = useState([]);
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+  const [connecting, setConnecting] = useState(true);
 
   useEffect(() => {
     getProducts({ featured: 'true' })
       .then((p) => setFeatured(p.filter((item) => item.visible !== false)))
-      .catch(() => setFeatured([]));
+      .catch(() => setFeatured([]))
+      .finally(() => setConnecting(false));
     getProducts({ newArrivals: 'true' })
       .then((p) => setNewArrivals(p.filter((item) => item.visible !== false)))
       .catch(() => setNewArrivals([]));
@@ -88,6 +90,14 @@ export default function Home() {
 
   return (
     <div>
+      {connecting && (
+        <div className="fixed inset-x-0 top-16 z-30 flex justify-center px-4">
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-amber-100 text-amber-800 text-xs sm:text-sm px-4 py-1.5 shadow">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span>Connecting to server… first load may take a few seconds.</span>
+          </div>
+        </div>
+      )}
       {/* Hero Banner Carousel */}
       {banners.length > 0 ? (
         <section className="relative w-full min-h-[260px] sm:h-[60vh] sm:min-h-[400px] overflow-hidden">
