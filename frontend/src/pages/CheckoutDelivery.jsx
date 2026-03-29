@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext';
 import { customerMe, getCustomerToken } from '../api';
 import { useAppSelector } from '../store/hooks';
 import { cartHasUnavailableLines } from '../utils/cartAvailability';
+import { parsePhone10Input, PHONE_10_HINT } from '../utils/phone10';
 
 function trimPart(s) {
   return String(s || '').trim();
@@ -45,7 +46,9 @@ export default function CheckoutDelivery() {
   const [pincode, setPincode] = useState(trimPart(initial.pincode));
   const [state, setState] = useState(trimPart(initial.state));
   const [customerName, setCustomerName] = useState(initialCustomer.customerName || '');
-  const [customerPhone, setCustomerPhone] = useState(initialCustomer.customerPhone || '');
+  const [customerPhone, setCustomerPhone] = useState(
+    parsePhone10Input(initialCustomer.customerPhone || '')
+  );
 
   const token = getCustomerToken();
   const [customerAddresses, setCustomerAddresses] = useState([]);
@@ -63,8 +66,8 @@ export default function CheckoutDelivery() {
 
   const hasSavedAddresses = customerAddresses.length > 0;
 
-  const phoneDigits = useMemo(() => customerPhone.replace(/\D/g, '').slice(0, 15), [customerPhone]);
-  const phoneValid = phoneDigits.length >= 10;
+  const phoneDigits = useMemo(() => parsePhone10Input(customerPhone), [customerPhone]);
+  const phoneValid = phoneDigits.length === 10;
 
   const combinedAddress = useMemo(
     () => buildCombinedAddress({ doorNo, street, landmark, city }),
@@ -107,7 +110,7 @@ export default function CheckoutDelivery() {
       .then((out) => {
         const me = out?.customer || {};
         if (me.name) setCustomerName(me.name);
-        if (me.phone) setCustomerPhone(me.phone);
+        if (me.phone) setCustomerPhone(parsePhone10Input(me.phone));
         const addrs = me.addresses || [];
         setCustomerAddresses(addrs);
 
@@ -182,7 +185,7 @@ export default function CheckoutDelivery() {
       return;
     }
     if (!phoneValid) {
-      alert('Please enter a valid phone number.');
+      alert('Please enter exactly 10 digits for mobile (do not include +91).');
       return;
     }
     if (cartBlocked) {
@@ -418,15 +421,17 @@ export default function CheckoutDelivery() {
                     id="customer-phone"
                     type="text"
                     inputMode="numeric"
-                    maxLength={15}
+                    maxLength={10}
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
-                    placeholder="e.g. 9876543210"
+                    onChange={(e) => setCustomerPhone(parsePhone10Input(e.target.value))}
+                    placeholder="9876543210"
                     className={inputClass}
                     autoComplete="tel"
                     spellCheck="false"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Required only for online ordering.</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {PHONE_10_HINT} Required for online ordering.
+                  </p>
                 </div>
               </div>
             )}

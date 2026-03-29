@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { customerRegister, setCustomerToken } from '../api';
+import { parsePhone10Input, PHONE_10_HINT } from '../utils/phone10';
 
 const PHONE_KEY = 'nbf-customer-phone';
 
@@ -13,18 +14,16 @@ export default function CustomerAccountRegister() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const normalizeDigits = (s) => String(s || '').replace(/\D/g, '').slice(0, 15);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    const digits = normalizeDigits(phone);
+    const digits = parsePhone10Input(phone);
     if (!name.trim()) {
       setError('Enter your name.');
       return;
     }
-    if (digits.length < 10) {
-      setError('Enter a valid phone number.');
+    if (digits.length !== 10) {
+      setError('Enter exactly 10 digits (no +91).');
       return;
     }
     if (password.length < 6) {
@@ -76,12 +75,14 @@ export default function CustomerAccountRegister() {
             <input
               id="phone"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g. 9876543210"
+              onChange={(e) => setPhone(parsePhone10Input(e.target.value))}
+              placeholder="9876543210"
               inputMode="numeric"
+              maxLength={10}
               className="w-full border border-rose-200 rounded-xl px-4 py-3 font-mono text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-300"
               autoComplete="tel"
             />
+            <p className="text-xs text-gray-500 mt-1">{PHONE_10_HINT}</p>
           </div>
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">

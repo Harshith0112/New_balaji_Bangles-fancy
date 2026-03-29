@@ -29,6 +29,11 @@ app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/** Public health check for uptime monitors (no auth) */
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Static uploads (fallback if not using Cloudinary only)
 app.use('/uploads', express.static('uploads'));
 

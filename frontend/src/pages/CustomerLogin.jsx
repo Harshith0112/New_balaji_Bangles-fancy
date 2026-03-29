@@ -1,20 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getOrdersByPhone } from '../api';
+import { parsePhone10Input, PHONE_10_HINT } from '../utils/phone10';
 
 const PHONE_KEY = 'nbf-customer-phone';
-
-function normalizeDigits(s) {
-  return String(s || '')
-    .replace(/\D/g, '')
-    .slice(0, 15);
-}
 
 export default function CustomerLogin() {
   const navigate = useNavigate();
   const [phone, setPhone] = useState(() => {
     try {
-      return normalizeDigits(localStorage.getItem(PHONE_KEY) || '');
+      return parsePhone10Input(localStorage.getItem(PHONE_KEY) || '');
     } catch {
       return '';
     }
@@ -24,15 +19,15 @@ export default function CustomerLogin() {
 
   useEffect(() => {
     // If already logged in, go straight to history.
-    if (phone && phone.length >= 10) navigate('/my-orders', { replace: true });
+    if (phone && phone.length === 10) navigate('/my-orders', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- we only want this initial redirect
   }, []);
 
   const submit = async (e) => {
     e.preventDefault();
-    const digits = normalizeDigits(phone);
-    if (!digits || digits.length < 10) {
-      setError('Enter a valid phone number.');
+    const digits = parsePhone10Input(phone);
+    if (!digits || digits.length !== 10) {
+      setError('Enter exactly 10 digits (no +91).');
       return;
     }
     setError('');
@@ -63,13 +58,15 @@ export default function CustomerLogin() {
         <input
           id="phone"
           value={phone}
-          onChange={(e) => setPhone(normalizeDigits(e.target.value))}
-          inputMode="tel"
+          onChange={(e) => setPhone(parsePhone10Input(e.target.value))}
+          inputMode="numeric"
+          maxLength={10}
           autoComplete="tel"
-          placeholder="e.g. 9876543210"
+          placeholder="9876543210"
           className="w-full border border-rose-200 rounded-xl px-4 py-3 font-mono text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-300"
           spellCheck="false"
         />
+        <p className="text-xs text-gray-500 mt-1">{PHONE_10_HINT}</p>
         {error && <div className="mt-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2 rounded-lg">{error}</div>}
         <button
           type="submit"
