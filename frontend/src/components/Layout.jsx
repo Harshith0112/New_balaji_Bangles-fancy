@@ -1,55 +1,115 @@
-import { useState } from 'react';
-import { Link, Outlet } from 'react-router-dom';
-import { whatsappChatUrl } from '../utils/whatsapp';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import StoreProductSearch from './StoreProductSearch';
+
+const PHONE_KEY = 'nbf-customer-phone';
+const CUSTOMER_TOKEN_KEY = 'nbf-customer-token';
+const STORE_PHONE = import.meta.env.VITE_STORE_PHONE || '+91 98765 43210';
+
+function normalizeDigits(s) {
+  return String(s || '').replace(/\D/g, '').slice(0, 15);
+}
 
 export default function Layout() {
   const { count } = useCart();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
+  const headerRef = useRef(null);
+  const [mobileMenuTopPx, setMobileMenuTopPx] = useState(64);
+
+  useEffect(() => {
+    // Ensure navigation opens new pages at top (footer/header links, etc.)
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location.pathname]);
+
+  useLayoutEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const read = () => setMobileMenuTopPx(Math.round(el.getBoundingClientRect().height));
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const hasCustomer = (() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return normalizeDigits(localStorage.getItem(PHONE_KEY) || '').length >= 10;
+    } catch {
+      return false;
+    }
+  })();
+
+  const hasCustomerAuth = (() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return !!localStorage.getItem(CUSTOMER_TOKEN_KEY);
+    } catch {
+      return false;
+    }
+  })();
+
   return (
     <div className="min-h-screen flex flex-col bg-cream-50">
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-rose-100 shadow-soft">
-        <div className="max-w-6xl mx-auto px-4 flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center gap-3 font-display text-xl font-semibold text-rose-700 hover:text-rose-800 transition">
-            <img src="/logo.png" alt="New Balaji Bangles and Fancy" className="w-11 h-11 flex-shrink-0 rounded-full object-cover ring-2 ring-rose-100" />
-            <span className="hidden sm:inline">NEW BALAJI BANGLES & FANCY</span>
-            <span className="sm:hidden">NBF</span>
-          </Link>
-          <nav className="hidden sm:flex items-center gap-6 text-gray-600">
-            <Link to="/" className="hover:text-rose-600 transition">Home</Link>
-            <Link to="/shop" className="hover:text-rose-600 transition">Shop</Link>
-            <Link to="/categories" className="hover:text-rose-600 transition">Categories</Link>
-            <Link to="/cart" className="hover:text-rose-600 transition inline-flex items-center gap-1">
-              Cart {count > 0 && <span className="bg-rose-500 text-white text-xs px-1.5 py-0.5 rounded-full">{count}</span>}
+      <header
+        ref={headerRef}
+        className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-rose-100 shadow-soft"
+      >
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="flex items-center justify-between gap-3 min-h-14 sm:min-h-16 py-2 sm:py-0 sm:h-16">
+            <Link to="/" className="flex items-center gap-2 sm:gap-3 font-display text-lg sm:text-xl font-semibold text-rose-700 hover:text-rose-800 transition shrink-0 min-w-0">
+              <img src="/logo.png" alt="New Balaji Bangles and Fancy" className="w-9 h-9 sm:w-11 sm:h-11 flex-shrink-0 rounded-full object-cover ring-2 ring-rose-100" />
+              <span className="hidden sm:inline truncate">NEW BALAJI BANGLES & FANCY</span>
+              <span className="sm:hidden">NBF</span>
             </Link>
-            <Link to="/about" className="hover:text-rose-600 transition">About</Link>
-            <Link to="/contact" className="hover:text-rose-600 transition">Contact</Link>
-            <Link to="/admin" className="text-lavender-600 hover:text-lavender-700 transition">Admin</Link>
-          </nav>
-          <div className="flex items-center gap-3 sm:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen((open) => !open)}
-              className="p-1.5 rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50"
-              aria-label="Toggle navigation menu"
-            >
-              <span className="block w-5 h-0.5 bg-rose-600 rounded-sm" />
-              <span className="block w-5 h-0.5 bg-rose-600 rounded-sm mt-1" />
-              <span className="block w-5 h-0.5 bg-rose-600 rounded-sm mt-1" />
-            </button>
-            <Link to="/cart" className="relative p-1.5 text-rose-600">
-              <CartIcon />
-              {count > 0 && <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center">{count}</span>}
-            </Link>
-            <Link to="/shop" className="text-sm text-rose-600">Shop</Link>
-            <a href={whatsappChatUrl()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 bg-green-500 text-white px-3 py-1.5 rounded-full text-sm font-medium">
-              <WhatsAppIcon /> Chat
-            </a>
+            <div className="hidden md:flex flex-1 min-w-0 justify-center px-2 lg:px-4">
+              <div className="w-full max-w-md lg:max-w-xl">
+                <StoreProductSearch variant="header" />
+              </div>
+            </div>
+            <nav className="hidden sm:flex items-center gap-4 lg:gap-6 text-gray-600 text-sm lg:text-base shrink-0">
+              <Link to="/" className="hover:text-rose-600 transition">Home</Link>
+              <Link to="/shop" className="hover:text-rose-600 transition">Shop</Link>
+              <Link to="/categories" className="hover:text-rose-600 transition">Categories</Link>
+              <Link to="/cart" className="hover:text-rose-600 transition inline-flex items-center gap-1">
+                Cart {count > 0 && <span className="bg-rose-500 text-white text-xs px-1.5 py-0.5 rounded-full">{count}</span>}
+              </Link>
+              <Link to="/about" className="hover:text-rose-600 transition">About</Link>
+              <Link to="/contact" className="hover:text-rose-600 transition">Contact</Link>
+              {hasCustomerAuth ? (
+                <Link to="/customer/account" className="hover:text-rose-600 transition">Profile</Link>
+              ) : (
+                <Link to="/customer/account/login" className="hover:text-rose-600 transition">Login</Link>
+              )}
+            </nav>
+            <div className="flex items-center gap-2 sm:gap-3 sm:hidden shrink-0">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen((open) => !open)}
+                className="p-1.5 rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50"
+                aria-label="Toggle navigation menu"
+              >
+                <span className="block w-5 h-0.5 bg-rose-600 rounded-sm" />
+                <span className="block w-5 h-0.5 bg-rose-600 rounded-sm mt-1" />
+                <span className="block w-5 h-0.5 bg-rose-600 rounded-sm mt-1" />
+              </button>
+              <Link to="/cart" className="relative p-1.5 text-rose-600">
+                <CartIcon />
+                {count > 0 && <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center">{count}</span>}
+              </Link>
+              <Link to="/shop" className="text-sm text-rose-600">Shop</Link>
+            </div>
+          </div>
+          <div className="md:hidden pb-3 -mt-1 border-t border-rose-50">
+            <StoreProductSearch variant="header" />
           </div>
         </div>
         {mobileMenuOpen && (
           <div
-            className="sm:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/20"
+            className="sm:hidden fixed inset-x-0 bottom-0 z-30 bg-black/20"
+            style={{ top: mobileMenuTopPx }}
             onClick={() => setMobileMenuOpen(false)}
           >
             <nav
@@ -71,9 +131,16 @@ export default function Layout() {
               <Link to="/contact" onClick={() => setMobileMenuOpen(false)} className="py-1 hover:text-rose-600">
                 Contact
               </Link>
-              <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="py-1 text-lavender-600 hover:text-lavender-700">
-                Admin
-              </Link>
+              {hasCustomerAuth && (
+                <Link to="/customer/account" onClick={() => setMobileMenuOpen(false)} className="py-1 hover:text-rose-600">
+                  Profile
+                </Link>
+              )}
+              {!hasCustomerAuth && (
+                <Link to="/customer/account/login" onClick={() => setMobileMenuOpen(false)} className="py-1 hover:text-rose-600">
+                  Login
+                </Link>
+              )}
             </nav>
           </div>
         )}
@@ -87,7 +154,7 @@ export default function Layout() {
         <div className="max-w-6xl mx-auto px-4 grid grid-cols-1 sm:grid-cols-3 gap-8">
           <div>
             <h3 className="font-display text-lg font-semibold text-white mb-2">NEW BALAJI BANGLES & FANCY</h3>
-            <p className="text-rose-200 text-sm">Bangles, Jewellery, Cosmetics & Accessories. Order on WhatsApp.</p>
+            <p className="text-rose-200 text-sm">Bangles, Jewellery, Cosmetics & Accessories.</p>
           </div>
           <div>
             <h3 className="font-semibold text-white mb-2">Quick Links</h3>
@@ -96,12 +163,24 @@ export default function Layout() {
               <li><Link to="/categories" className="hover:text-white transition">Categories</Link></li>
               <li><Link to="/about" className="hover:text-white transition">About Us</Link></li>
               <li><Link to="/contact" className="hover:text-white transition">Contact</Link></li>
+              <li><Link to="/admin" className="hover:text-white transition">Admin</Link></li>
+              {hasCustomerAuth ? (
+                <li><Link to="/customer/account" className="hover:text-white transition">Profile</Link></li>
+              ) : (
+                <>
+                  <li><Link to="/customer/register" className="hover:text-white transition">Customer Register</Link></li>
+                  <li><Link to="/customer/account/login" className="hover:text-white transition">Customer Login</Link></li>
+                </>
+              )}
             </ul>
           </div>
           <div>
-            <h3 className="font-semibold text-white mb-2">Order on WhatsApp</h3>
-            <a href={whatsappChatUrl()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-600 transition">
-              <WhatsAppIcon /> Start Order
+            <h3 className="font-semibold text-white mb-2">Need help?</h3>
+            <a
+              href={`tel:${String(STORE_PHONE).replace(/\s/g, '')}`}
+              className="inline-flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-600 transition"
+            >
+              Contact us
             </a>
           </div>
         </div>
@@ -110,15 +189,7 @@ export default function Layout() {
         </div>
       </footer>
 
-      <a
-        href={whatsappChatUrl()}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="whatsapp-float fixed bottom-6 right-6 w-14 h-14 bg-green-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-green-600 hover:scale-105 transition-all"
-        aria-label="Chat on WhatsApp"
-      >
-        <WhatsAppIcon className="w-8 h-8" />
-      </a>
+      {/* WhatsApp floating CTA removed */}
     </div>
   );
 }

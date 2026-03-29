@@ -3,6 +3,7 @@ import Product from '../models/Product.js';
 import { protect } from '../middleware/auth.js';
 import multer from 'multer';
 import cloudinary from '../config/cloudinary.js';
+import { emitSiteDataUpdated } from '../siteSocket.js';
 
 // Helper function to extract Cloudinary public_id from URL
 function extractPublicId(url) {
@@ -121,7 +122,7 @@ router.get('/suggest-nbf', protect, async (req, res) => {
         if (n > maxNum) maxNum = n;
       }
     }
-    const suggested = `NBF-${String(maxNum + 1).padStart(3, '0')}`;
+    const suggested = String(maxNum + 1).padStart(3, '0');
     res.json({ suggestedNbf: suggested });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -232,6 +233,7 @@ router.post('/', protect, upload.array('images', 5), async (req, res) => {
       newArrivals: newArrivals === 'true' || newArrivals === true,
       visible: visible !== 'false' && visible !== false,
     });
+    emitSiteDataUpdated();
     res.status(201).json(product);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -292,6 +294,7 @@ router.put('/:id', protect, upload.array('images', 5), async (req, res) => {
     
     product.images = images;
     await product.save();
+    emitSiteDataUpdated();
     res.json(product);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -312,6 +315,7 @@ router.delete('/:id', protect, async (req, res) => {
     }
     
     await Product.findByIdAndDelete(req.params.id);
+    emitSiteDataUpdated();
     res.json({ message: 'Product deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -23,10 +23,10 @@ const sampleProducts = [
 ];
 
 const defaultCategories = [
-  { name: 'Bangles', slug: 'bangles', order: 1 },
-  { name: 'Fancy Jewellery', slug: 'jewellery', order: 2 },
-  { name: 'Cosmetics', slug: 'cosmetics', order: 3 },
-  { name: 'Hair & Fashion Accessories', slug: 'accessories', order: 4 },
+  { name: 'Bangles', slug: 'bangles', order: 1, description: 'Traditional and designer bangles for every occasion.' },
+  { name: 'Fancy Jewellery', slug: 'jewellery', order: 2, description: 'Fancy jewellery — necklaces, earrings, maang tikkas & more.' },
+  { name: 'Cosmetics', slug: 'cosmetics', order: 3, description: 'Lipsticks, kajal, eyeliners and beauty essentials.' },
+  { name: 'Hair & Fashion Accessories', slug: 'accessories', order: 4, description: 'Hair accessories, clutches and fashion add-ons.' },
 ];
 
 async function seed() {

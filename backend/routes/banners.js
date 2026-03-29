@@ -3,6 +3,7 @@ import Banner from '../models/Banner.js';
 import { protect } from '../middleware/auth.js';
 import multer from 'multer';
 import cloudinary from '../config/cloudinary.js';
+import { emitSiteDataUpdated } from '../siteSocket.js';
 
 // Helper function to extract Cloudinary public_id from URL
 function extractPublicId(url) {
@@ -91,6 +92,7 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
       order: order ? Number(order) : 0,
     });
 
+    emitSiteDataUpdated();
     res.status(201).json(banner);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -137,6 +139,7 @@ router.put('/:id', protect, upload.single('image'), async (req, res) => {
     }
 
     await banner.save();
+    emitSiteDataUpdated();
     res.json(banner);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -155,6 +158,7 @@ router.delete('/:id', protect, async (req, res) => {
     }
     
     await Banner.findByIdAndDelete(req.params.id);
+    emitSiteDataUpdated();
     res.json({ message: 'Banner deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });

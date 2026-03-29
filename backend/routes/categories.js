@@ -1,7 +1,29 @@
 import express from 'express';
+import multer from 'multer';
+import cloudinary from '../config/cloudinary.js';
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
 import { protect } from '../middleware/auth.js';
+import { emitSiteDataUpdated } from '../siteSocket.js';
+
+function extractPublicId(url) {
+  if (!url || typeof url !== 'string') return null;
+  const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+  return match ? match[1] : null;
+}
+
+async function deleteCloudinaryImage(url) {
+  if (!url || !process.env.CLOUDINARY_CLOUD_NAME) return;
+  if (!url.includes('cloudinary.com')) return;
+  try {
+    const publicId = extractPublicId(url);
+    if (publicId) await cloudinary.uploader.destroy(publicId);
+  } catch (err) {
+    console.error('Error deleting category image from Cloudinary:', err.message);
+  }
+}
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
 const router = express.Router();
 
@@ -39,6 +61,7 @@ router.get('/', async (req, res) => {
         name: c.name,
         slug,
         icon: c.icon || '🛍️',
+        description: (c.description && String(c.description).trim()) || '',
         count,
       };
     });
@@ -49,16 +72,32 @@ router.get('/', async (req, res) => {
 });
 
 // Admin: list all categories (same as GET but for admin UI)
-// Admin: create category
-router.post('/', protect, async (req, res) => {
+// Admin: create category (JSON or multipart with optional image → stored in `icon` like emoji URLs)
+router.post('/', protect, upload.single('image'), async (req, res) => {
   try {
-    const { name, slug, icon } = req.body;
+    const { name, slug, icon, description } = req.body;
     const s = (slug || name || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    const category = await Category.create({ 
-      name: name || s, 
+    let iconValue = (icon && String(icon).trim()) || '🛍️';
+    const desc =
+      description != null && String(description).trim() !== '' ? String(description).trim() : '';
+
+    if (req.file && process.env.CLOUDINARY_CLOUD_NAME) {
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'womens-emporium/categories' },
+          (err, result) => (err ? reject(err) : resolve(result))
+        );
+        stream.end(req.file.buffer);
+      });
+      iconValue = result.secure_url;
+    }
+
+    const category = await Category.create({
+      name: name || s,
       slug: s || name,
-      icon: icon || '🛍️'
+      icon: iconValue,
     });
+    emitSiteDataUpdated();
     res.status(201).json(category);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -66,20 +105,45 @@ router.post('/', protect, async (req, res) => {
 });
 
 // Admin: update category
-router.put('/:id', protect, async (req, res) => {
+router.put('/:id', protect, upload.single('image'), async (req, res) => {
   try {
-    const { name, slug, icon } = req.body;
+    const existing = await Category.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Category not found' });
+
+    const { name, slug, icon, description } = req.body;
     const updateData = {};
     if (name != null) updateData.name = name;
-    if (slug != null) updateData.slug = slug.toLowerCase().trim();
-    if (icon != null) updateData.icon = icon.trim();
-    
-    const category = await Category.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true }
-    );
+    if (slug != null) updateData.slug = String(slug).toLowerCase().trim();
+    if (description !== undefined) updateData.description = String(description).trim();
+
+    if (req.file && process.env.CLOUDINARY_CLOUD_NAME) {
+      if (existing.icon && existing.icon.includes('cloudinary.com')) {
+        await deleteCloudinaryImage(existing.icon);
+      }
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'womens-emporium/categories' },
+          (err, result) => (err ? reject(err) : resolve(result))
+        );
+        stream.end(req.file.buffer);
+      });
+      updateData.icon = result.secure_url;
+    } else if (icon != null) {
+      const trimmed = String(icon).trim() || '🛍️';
+      if (existing.icon && existing.icon.includes('cloudinary.com')) {
+        const isUrl = /^https?:\/\//i.test(trimmed);
+        const replacingImage =
+          !isUrl || (isUrl && trimmed !== existing.icon);
+        if (replacingImage) {
+          await deleteCloudinaryImage(existing.icon);
+        }
+      }
+      updateData.icon = trimmed;
+    }
+
+    const category = await Category.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!category) return res.status(404).json({ message: 'Category not found' });
+    emitSiteDataUpdated();
     res.json(category);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -91,6 +155,10 @@ router.delete('/:id', protect, async (req, res) => {
   try {
     const category = await Category.findByIdAndDelete(req.params.id);
     if (!category) return res.status(404).json({ message: 'Category not found' });
+    if (category.icon && category.icon.includes('cloudinary.com')) {
+      await deleteCloudinaryImage(category.icon);
+    }
+    emitSiteDataUpdated();
     res.json({ message: 'Deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });

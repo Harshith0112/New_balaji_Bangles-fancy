@@ -9,6 +9,7 @@ const draftItemSchema = new mongoose.Schema(
     quantity: { type: Number, required: true, min: 1 },
     lineTotal: { type: Number, required: true },
     image: { type: String, default: '' },
+    selectedOptions: { type: mongoose.Schema.Types.Mixed, default: {} },
     packed: { type: Boolean, default: false },
   },
   { _id: false }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { adminMe, clearToken } from '../api';
+import AdminProductSearch from './AdminProductSearch';
 
 const INACTIVITY_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -143,9 +144,9 @@ export default function AdminLayout() {
             <span className="text-xl">🏷️</span>
             Offer Banner
           </NavLink>
-          <NavLink to="/admin/dashboard/processing" className={navClass}>
-            <span className="text-xl">📦</span>
-            Processing
+          <NavLink to="/admin/dashboard/coupons" className={navClass}>
+            <span className="text-xl">🎟️</span>
+            Coupons
           </NavLink>
           <NavLink to="/admin/dashboard/orders" className={navClass}>
             <span className="text-xl">📋</span>
@@ -166,8 +167,16 @@ export default function AdminLayout() {
       </aside>
 
       {/* Main content: add top padding on mobile for the fixed header */}
-      <main className="flex-1 overflow-auto pt-14 md:pt-0 min-w-0">
-        <Outlet />
+      <main className="flex-1 overflow-auto pt-14 md:pt-0 min-w-0 flex flex-col">
+        <div className="sticky top-0 z-20 shrink-0 bg-cream-50/95 backdrop-blur-sm border-b border-rose-100 px-4 py-2 md:py-3">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <p className="text-xs font-medium text-gray-600 sm:hidden">Find a product</p>
+            <AdminProductSearch />
+          </div>
+        </div>
+        <div className="flex-1 min-h-0">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

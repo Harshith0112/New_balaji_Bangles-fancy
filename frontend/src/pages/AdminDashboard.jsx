@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import CategoryIcon, { isCategoryIconImage } from '../components/CategoryIcon';
 import {
   getProducts,
   getCategories,
@@ -21,12 +22,62 @@ import {
   adminGetOrders,
   adminUpdateOrder,
   adminGetOrderBill,
-  adminGetOrderConfirmation,
 } from '../api';
+import { formatOrderItemOptionsLine } from '../utils/orderItemOptions';
+import {
+  formatInrAmount,
+  getHighestVariantTotal,
+  getLowestVariantTotal,
+  variantPriceHasRange,
+} from '../utils/variantPrice';
+
+/** Min–max selling price (base + option extras), same rules as storefront ProductCard */
+function adminProductPriceLabel(p) {
+  const low = getLowestVariantTotal(p);
+  const high = getHighestVariantTotal(p);
+  if (variantPriceHasRange(p)) {
+    return `₹${formatInrAmount(low)} – ₹${formatInrAmount(high)}`;
+  }
+  return `₹${formatInrAmount(low)}`;
+}
+
+/** Product.category is stored as slug; show category name in lists */
+function categoryDisplayName(categorySlug, categories) {
+  if (categorySlug == null || String(categorySlug).trim() === '') return '—';
+  const s = String(categorySlug).trim();
+  const c = (categories || []).find(
+    (x) => x.slug === s || String(x.slug || '').toLowerCase() === s.toLowerCase()
+  );
+  return c?.name || s;
+}
+
+/** Bill from API may be full HTML (invoice) or legacy plain text */
+function isBillHtml(content) {
+  return typeof content === 'string' && (content.trim().startsWith('<!') || content.includes('</html>'));
+}
+
+function printHtmlBill(html) {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+    printWindow.close();
+  }, 300);
+}
+
+/** True if order has saved delivery (from WhatsApp *Delivery address* block) */
+function orderHasDelivery(o) {
+  const d = o?.delivery;
+  if (!d || typeof d !== 'object') return false;
+  return !!(String(d.address || '').trim() || String(d.pincode || '').trim() || String(d.state || '').trim());
+}
 
 function DashboardPage({ title, children }) {
   return (
-    <div className="p-4 sm:p-6 md:p-8 max-w-6xl min-w-0 overflow-x-hidden">
+    <div className="p-4 sm:p-6 md:p-8 max-w-6xl min-w-0">
       <h1 className="font-display text-xl sm:text-2xl font-bold text-rose-800 mb-4 sm:mb-6">{title}</h1>
       {children}
     </div>
@@ -45,7 +96,7 @@ export function DashboardHome() {
     { to: '/admin/dashboard/categories', label: 'Categories', count: counts.categories, icon: '📁', color: 'bg-amber-500' },
     { to: '/admin/dashboard/banners', label: 'Banners', icon: '🖼️', color: 'bg-purple-500' },
     { to: '/admin/dashboard/offer', label: 'Offer Banner', icon: '🏷️', color: 'bg-lavender-500' },
-    { to: '/admin/dashboard/processing', label: 'Processing', icon: '📦', color: 'bg-teal-500' },
+    { to: '/admin/dashboard/coupons', label: 'Coupons', icon: '🎟️', color: 'bg-emerald-500' },
     { to: '/admin/dashboard/orders', label: 'Orders', icon: '📋', color: 'bg-sky-500' },
   ];
   return (
@@ -80,6 +131,7 @@ export function AdminProducts() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     Promise.all([getProducts({ includeHidden: 'true' }), getCategories()])
@@ -90,6 +142,23 @@ export function AdminProducts() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId || products.length === 0) return;
+    const p = products.find((x) => String(x._id) === String(editId));
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('edit');
+        return next;
+      },
+      { replace: true }
+    );
+    if (p) {
+      setModal({ product: p });
+    }
+  }, [products, searchParams, setSearchParams]);
 
   const openAdd = () => setModal('add');
   const openEdit = (product) => setModal({ product });
@@ -141,8 +210,8 @@ export function AdminProducts() {
             <div className="flex-1 min-w-0">
               <p className="font-medium text-gray-800 truncate">{p.name}</p>
               {p.nbfCode && <p className="text-xs text-gray-500">NBF: {p.nbfCode}</p>}
-              <p className="text-sm text-gray-600 capitalize mt-0.5">{p.category}</p>
-              <p className="text-rose-600 font-semibold mt-1">₹{p.price}</p>
+              <p className="text-sm text-gray-600 mt-0.5">{categoryDisplayName(p.category, categories)}</p>
+              <p className="text-rose-600 font-semibold mt-1">{adminProductPriceLabel(p)}</p>
               <p className="text-xs text-gray-500">{p.inStock ? 'In stock' : 'Out of stock'}</p>
               <div className="flex gap-2 mt-2">
                 <button onClick={() => openEdit(p)} className="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 text-sm font-medium">Edit</button>
@@ -174,8 +243,8 @@ export function AdminProducts() {
                     <img src={p.images?.[0] || 'https://placehold.co/60x60/fce7f3/9f1239?text=No+Image'} alt="" className="w-12 h-12 object-cover rounded" />
                   </td>
                   <td className="p-3 font-medium">{p.name}{p.nbfCode && <span className="block text-xs text-gray-500">NBF: {p.nbfCode}</span>}</td>
-                  <td className="p-3 capitalize">{p.category}</td>
-                  <td className="p-3">₹{p.price}</td>
+                  <td className="p-3">{categoryDisplayName(p.category, categories)}</td>
+                  <td className="p-3 whitespace-nowrap">{adminProductPriceLabel(p)}</td>
                   <td className="p-3">{p.inStock ? 'In stock' : 'Out of stock'}</td>
                   <td className="p-3 flex gap-2">
                     <button onClick={() => openEdit(p)} className="text-rose-600 text-sm font-medium hover:underline">Edit</button>
@@ -295,13 +364,14 @@ export function AdminOrders() {
   const [loading, setLoading] = useState(true);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [trackingInput, setTrackingInput] = useState({});
+  const [carrierInput, setCarrierInput] = useState({});
   const [generatingBillId, setGeneratingBillId] = useState(null);
-  const [generatingConfirmationId, setGeneratingConfirmationId] = useState(null);
   const [packingOrder, setPackingOrder] = useState(null);
   const [editItemsOrder, setEditItemsOrder] = useState(null);
   const [viewOrder, setViewOrder] = useState(null);
+  const [viewAddressOrder, setViewAddressOrder] = useState(null);
   const [lightboxImage, setLightboxImage] = useState(null);
-  const [ordersTab, setOrdersTab] = useState('all'); // all | confirmation-pending | payment-pending | packing-pending | shipment-pending | completed
+  const [ordersTab, setOrdersTab] = useState('confirmation-pending'); // default: confirmation pending; all = last tab
   const [orderSearch, setOrderSearch] = useState('');
 
   useEffect(() => {
@@ -326,18 +396,6 @@ export function AdminOrders() {
       alert(e.message || 'Failed to generate bill');
     } finally {
       setGeneratingBillId(null);
-    }
-  };
-
-  const handleGenerateConfirmation = async (orderId) => {
-    setGeneratingConfirmationId(orderId);
-    try {
-      const data = await adminGetOrderConfirmation(orderId);
-      printDocument(data.confirmation, `OrderConfirmation-${data.order.orderId}`, 'Order Confirmation');
-    } catch (e) {
-      alert(e.message || 'Failed to generate order confirmation');
-    } finally {
-      setGeneratingConfirmationId(null);
     }
   };
 
@@ -475,7 +533,9 @@ export function AdminOrders() {
     'payment-pending': (o) => (o.status || '') === 'confirmed' && (o.paymentStatus || 'pending') !== 'paid',
     'packing-pending': (o) => (o.status || '') === 'confirmed',
     'shipment-pending': (o) => (o.status || '') === 'packed',
+    local: (o) => String(o?.delivery?.pincode || '').replace(/\D/g, '') === '517501',
     completed: (o) => (o.status || '') === 'shipped',
+    returned: (o) => (o.status || '') === 'returned',
     cancelled: (o) => (o.status || '') === 'cancelled',
   };
   const tabFilteredOrders = orders.filter(orderFilters[ordersTab] || orderFilters.all);
@@ -489,23 +549,29 @@ export function AdminOrders() {
     'payment-pending': orders.filter(orderFilters['payment-pending']).length,
     'packing-pending': orders.filter(orderFilters['packing-pending']).length,
     'shipment-pending': orders.filter(orderFilters['shipment-pending']).length,
+    local: orders.filter(orderFilters.local).length,
     completed: orders.filter(orderFilters.completed).length,
+    returned: orders.filter(orderFilters.returned).length,
     cancelled: orders.filter(orderFilters.cancelled).length,
   };
 
   const tabs = [
-    { id: 'all', label: 'All orders', count: counts.all },
     { id: 'confirmation-pending', label: 'Confirmation pending', count: counts['confirmation-pending'] },
     { id: 'payment-pending', label: 'Payment pending', count: counts['payment-pending'] },
     { id: 'packing-pending', label: 'Packing pending', count: counts['packing-pending'] },
     { id: 'shipment-pending', label: 'Shipment pending', count: counts['shipment-pending'] },
+    { id: 'local', label: 'Local orders (517501)', count: counts.local },
     { id: 'completed', label: 'Completed orders', count: counts.completed },
+    { id: 'returned', label: 'Returned', count: counts.returned },
     { id: 'cancelled', label: 'Cancelled', count: counts.cancelled },
+    { id: 'all', label: 'All orders', count: counts.all },
   ];
 
   const statusBadgeClass = (o) =>
     o.status === 'cancelled'
       ? 'bg-red-100 text-red-800'
+      : o.status === 'returned'
+      ? 'bg-orange-100 text-orange-900'
       : o.status === 'shipped'
       ? 'bg-green-100 text-green-800'
       : o.status === 'packed'
@@ -514,7 +580,36 @@ export function AdminOrders() {
       ? 'bg-gray-100 text-gray-700'
       : 'bg-sky-100 text-sky-800';
   const statusLabel = (o) =>
-    o.status === 'completed' ? 'Confirmed' : o.status === 'pending' ? 'Pending' : o.status === 'cancelled' ? 'Cancelled' : (o.status || 'Pending');
+    o.status === 'completed'
+      ? 'Confirmed'
+      : o.status === 'pending'
+      ? 'Pending'
+      : o.status === 'cancelled'
+      ? 'Cancelled'
+      : o.status === 'returned'
+      ? 'Returned'
+      : o.status === 'shipped'
+      ? 'Shipped'
+      : o.status === 'packed'
+      ? 'Packed'
+      : o.status === 'confirmed'
+      ? 'Confirmed'
+      : o.status || 'Pending';
+
+  const canMarkOrderReturned = (o) => o.status === 'shipped' || o.status === 'packed';
+
+  const handleMarkReturned = async (orderId) => {
+    if (!window.confirm('Mark this order as returned? (e.g. customer sent items back.)')) return;
+    setUpdatingOrderId(orderId);
+    try {
+      await adminUpdateOrder(orderId, { status: 'returned' });
+      refreshData();
+    } catch (e) {
+      alert(e.message || 'Failed to mark as returned');
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
 
   return (
     <DashboardPage title="Orders">
@@ -594,6 +689,12 @@ export function AdminOrders() {
                       <span className="font-mono text-xs">{o.trackingNumber}</span>
                     </>
                   )}
+                  {(o.status === 'shipped' || o.status === 'completed') && o.shippingCarrier && (
+                    <>
+                      <span className="text-gray-500">Shipped by</span>
+                      <span className="text-xs text-gray-800">{o.shippingCarrier}</span>
+                    </>
+                  )}
                 </div>
                 <div className="pt-3 border-t border-rose-100 space-y-2">
                   <OrderStatusActions
@@ -601,23 +702,51 @@ export function AdminOrders() {
                     updatingOrderId={updatingOrderId}
                     trackingInput={trackingInput}
                     setTrackingInput={setTrackingInput}
+                    carrierInput={carrierInput}
+                    setCarrierInput={setCarrierInput}
                     setUpdatingOrderId={setUpdatingOrderId}
                     onUpdate={refreshData}
                     onOpenPackingChecklist={() => setPackingOrder(o)}
+                    onAfterAccept={(updated) => {
+                      setViewOrder(updated);
+                      setEditItemsOrder(null);
+                    }}
+                    onAfterDecline={(updated) => {
+                      setViewOrder(updated);
+                      setEditItemsOrder(null);
+                    }}
                   />
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => setViewOrder(o)} className="text-xs px-3 py-2 rounded-lg bg-sky-100 text-sky-800 font-medium hover:bg-sky-200" title="View bill details">
                       👁 View
                     </button>
+                    {orderHasDelivery(o) && (
+                      <button
+                        type="button"
+                        onClick={() => setViewAddressOrder(o)}
+                        className="text-xs px-3 py-2 rounded-lg bg-teal-100 text-teal-800 font-medium hover:bg-teal-200"
+                        title="View delivery address"
+                      >
+                        📍 Address
+                      </button>
+                    )}
                     <button type="button" onClick={() => setEditItemsOrder(o)} className="text-xs px-3 py-2 rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200">
                       ✏️ Edit items
                     </button>
                     <button type="button" onClick={() => handleGenerateBill(o._id)} disabled={generatingBillId === o._id} className="text-xs px-3 py-2 rounded-lg bg-purple-100 text-purple-800 font-medium hover:bg-purple-200 disabled:opacity-50">
                       {generatingBillId === o._id ? '…' : '📄 Bill'}
                     </button>
-                    <button type="button" onClick={() => handleGenerateConfirmation(o._id)} disabled={generatingConfirmationId === o._id} className="text-xs px-3 py-2 rounded-lg bg-indigo-100 text-indigo-800 font-medium hover:bg-indigo-200 disabled:opacity-50">
-                      {generatingConfirmationId === o._id ? '…' : '📋 Confirmation'}
-                    </button>
+                    {canMarkOrderReturned(o) && (
+                      <button
+                        type="button"
+                        onClick={() => handleMarkReturned(o._id)}
+                        disabled={updatingOrderId === o._id}
+                        className="text-xs px-3 py-2 rounded-lg bg-orange-100 text-orange-900 font-medium hover:bg-orange-200 disabled:opacity-50"
+                        title="Mark order as returned"
+                      >
+                        ↩ Returned
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -635,7 +764,7 @@ export function AdminOrders() {
                     <th className="p-3 font-semibold text-gray-700">Total</th>
                     <th className="p-3 font-semibold text-gray-700">Payment</th>
                     <th className="p-3 font-semibold text-gray-700">Status</th>
-                    <th className="p-3 font-semibold text-gray-700">Tracking</th>
+                    <th className="p-3 font-semibold text-gray-700">Tracking / courier</th>
                     <th className="p-3 font-semibold text-gray-700">Actions</th>
                   </tr>
                 </thead>
@@ -663,8 +792,15 @@ export function AdminOrders() {
                         </span>
                       </td>
                       <td className="p-3">
-                        {(o.status === 'shipped' || o.status === 'completed') && o.trackingNumber ? (
-                          <span className="font-mono text-sm">{o.trackingNumber}</span>
+                        {(o.status === 'shipped' || o.status === 'completed') && (o.trackingNumber || o.shippingCarrier) ? (
+                          <div>
+                            {o.trackingNumber ? (
+                              <span className="font-mono text-sm block">{o.trackingNumber}</span>
+                            ) : null}
+                            {o.shippingCarrier ? (
+                              <span className="text-xs text-gray-600 block mt-0.5">{o.shippingCarrier}</span>
+                            ) : null}
+                          </div>
                         ) : (
                           '–'
                         )}
@@ -676,23 +812,51 @@ export function AdminOrders() {
                             updatingOrderId={updatingOrderId}
                             trackingInput={trackingInput}
                             setTrackingInput={setTrackingInput}
+                            carrierInput={carrierInput}
+                            setCarrierInput={setCarrierInput}
                             setUpdatingOrderId={setUpdatingOrderId}
                             onUpdate={refreshData}
                             onOpenPackingChecklist={() => setPackingOrder(o)}
+                            onAfterAccept={(updated) => {
+                              setViewOrder(updated);
+                              setEditItemsOrder(null);
+                            }}
+                            onAfterDecline={(updated) => {
+                              setViewOrder(updated);
+                              setEditItemsOrder(null);
+                            }}
                           />
                           <div className="flex gap-2 flex-wrap">
                             <button type="button" onClick={() => setViewOrder(o)} className="text-xs px-2 py-1 rounded bg-sky-100 text-sky-800 font-medium hover:bg-sky-200" title="View bill details">
                               👁 View
                             </button>
+                            {orderHasDelivery(o) && (
+                              <button
+                                type="button"
+                                onClick={() => setViewAddressOrder(o)}
+                                className="text-xs px-2 py-1 rounded bg-teal-100 text-teal-800 font-medium hover:bg-teal-200"
+                                title="View delivery address"
+                              >
+                                📍 Address
+                              </button>
+                            )}
                             <button type="button" onClick={() => setEditItemsOrder(o)} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-800 font-medium hover:bg-gray-200" title="Edit order items">
                               ✏️ Edit items
                             </button>
                             <button type="button" onClick={() => handleGenerateBill(o._id)} disabled={generatingBillId === o._id} className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-800 font-medium hover:bg-purple-200 disabled:opacity-50" title="Generate bill">
                               {generatingBillId === o._id ? 'Generating...' : '📄 Bill'}
                             </button>
-                            <button type="button" onClick={() => handleGenerateConfirmation(o._id)} disabled={generatingConfirmationId === o._id} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-800 font-medium hover:bg-indigo-200 disabled:opacity-50" title="Generate order confirmation">
-                              {generatingConfirmationId === o._id ? 'Generating...' : '📋 Confirmation'}
-                            </button>
+                            {canMarkOrderReturned(o) && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkReturned(o._id)}
+                                disabled={updatingOrderId === o._id}
+                                className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-900 font-medium hover:bg-orange-200 disabled:opacity-50"
+                                title="Mark order as returned"
+                              >
+                                ↩ Returned
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -765,6 +929,15 @@ export function AdminOrders() {
                   <span className="font-medium">{viewOrder.customerPhone || '—'}</span>
                 </div>
               </div>
+              {orderHasDelivery(viewOrder) && (
+                <div className="rounded-lg border border-teal-100 bg-teal-50/40 p-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-teal-800 mb-2">Delivery address</h3>
+                  <p className="text-sm text-gray-900 whitespace-pre-wrap">{viewOrder.delivery.address}</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Pincode: {viewOrder.delivery.pincode || '—'} · State: {viewOrder.delivery.state || '—'}
+                  </p>
+                </div>
+              )}
               <div className="rounded-lg border border-rose-100 bg-rose-50/30 p-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-rose-700 mb-2">Order details</h3>
                 <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -778,6 +951,18 @@ export function AdminOrders() {
                       {viewOrder.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
                     </span>
                   </span>
+                  {(viewOrder.status === 'shipped' || viewOrder.status === 'completed') && viewOrder.trackingNumber ? (
+                    <>
+                      <span className="text-gray-500">Tracking</span>
+                      <span className="font-mono">{viewOrder.trackingNumber}</span>
+                    </>
+                  ) : null}
+                  {(viewOrder.status === 'shipped' || viewOrder.status === 'completed') && viewOrder.shippingCarrier ? (
+                    <>
+                      <span className="text-gray-500">Courier</span>
+                      <span>{viewOrder.shippingCarrier}</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <div>
@@ -794,24 +979,48 @@ export function AdminOrders() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(viewOrder.items || []).map((item, idx) => (
+                      {(viewOrder.items || []).map((item, idx) => {
+                        const optionsLine = formatOrderItemOptionsLine(item.selectedOptions);
+                        return (
                         <tr key={idx} className={idx % 2 === 1 ? 'bg-gray-50' : ''}>
                           <td className="p-2 border-r border-b border-black">{idx + 1}</td>
-                          <td className="p-2 border-r border-b border-black">{item.name}{item.nbfCode ? ` (${item.nbfCode})` : ''}</td>
+                          <td className="p-2 border-r border-b border-black align-top">
+                            <div>{item.name}{item.nbfCode ? ` (${item.nbfCode})` : ''}</div>
+                            {optionsLine ? (
+                              <div className="text-xs text-gray-600 mt-1 leading-snug">{optionsLine}</div>
+                            ) : null}
+                          </td>
                           <td className="p-2 border-r border-b border-black text-center">{item.quantity}</td>
                           <td className="p-2 border-r border-b border-black">₹ {Number(item.price).toFixed(2)}</td>
                           <td className="p-2 border-b border-black text-right">₹ {Number(item.lineTotal).toFixed(2)}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
               <div className="text-right space-y-1 text-sm">
-                <div className="flex justify-end gap-4">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span>₹ {(Number(viewOrder.total) || 0).toFixed(2)}</span>
-                </div>
+                {(() => {
+                  const itemsSub = (viewOrder.items || []).reduce((s, i) => s + (Number(i.lineTotal) || 0), 0);
+                  const cd = Number(viewOrder.couponDiscount) || 0;
+                  return (
+                    <>
+                      <div className="flex justify-end gap-4">
+                        <span className="text-gray-500">Items subtotal</span>
+                        <span>₹ {itemsSub.toFixed(2)}</span>
+                      </div>
+                      {cd > 0 && (
+                        <div className="flex justify-end gap-4 text-emerald-800">
+                          <span className="text-gray-500">
+                            Coupon{viewOrder.couponCode ? ` (${viewOrder.couponCode})` : ''}
+                          </span>
+                          <span>− ₹ {cd.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
                 {(Number(viewOrder.shippingCharge) || 0) > 0 && (
                   <div className="flex justify-end gap-4">
                     <span className="text-gray-500">Shipping</span>
@@ -830,6 +1039,42 @@ export function AdminOrders() {
               </button>
               <button type="button" onClick={() => { handleGenerateBill(viewOrder._id); setViewOrder(null); }} disabled={generatingBillId === viewOrder._id} className="px-4 py-2 rounded-lg bg-purple-100 text-purple-800 font-medium hover:bg-purple-200 disabled:opacity-50">
                 {generatingBillId === viewOrder._id ? '…' : '📄 Generate Bill'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery address (from WhatsApp order) */}
+      {viewAddressOrder && orderHasDelivery(viewAddressOrder) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" aria-modal="true" role="dialog">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-rose-100 flex justify-between items-center">
+              <h2 className="font-display text-lg font-bold text-rose-800">Delivery address</h2>
+              <button type="button" onClick={() => setViewAddressOrder(null)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-4 text-sm">
+              <p className="font-mono text-xs text-gray-500">{viewAddressOrder.orderId}</p>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-teal-800">Address</span>
+                <p className="mt-1 text-gray-900 whitespace-pre-wrap">{viewAddressOrder.delivery.address || '—'}</p>
+              </div>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
+                <span className="text-gray-500">Pincode</span>
+                <span className="font-medium">{viewAddressOrder.delivery.pincode || '—'}</span>
+                <span className="text-gray-500">State</span>
+                <span className="font-medium">{viewAddressOrder.delivery.state || '—'}</span>
+              </div>
+            </div>
+            <div className="p-4 border-t border-rose-100">
+              <button
+                type="button"
+                onClick={() => setViewAddressOrder(null)}
+                className="w-full px-4 py-2.5 rounded-lg bg-teal-600 text-white font-medium hover:bg-teal-700"
+              >
+                Close
               </button>
             </div>
           </div>
@@ -879,7 +1124,9 @@ function PackingChecklistModal({ order, onClose, onConfirm, onImageClick }) {
         <div className="p-4 overflow-y-auto flex-1">
           <p className="text-sm text-gray-600 mb-3">Tick each item when packed. Confirm when all are done.</p>
           <ul className="space-y-3">
-            {items.map((item, idx) => (
+            {items.map((item, idx) => {
+              const optionsLine = formatOrderItemOptionsLine(item.selectedOptions);
+              return (
               <li
                 key={idx}
                 className={`flex items-center gap-3 p-3 rounded-xl border ${checked[idx] ? 'bg-green-50 border-green-200' : 'bg-cream-50 border-rose-100'}`}
@@ -902,11 +1149,15 @@ function PackingChecklistModal({ order, onClose, onConfirm, onImageClick }) {
                   />
                 </button>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800 truncate">{item.name}</p>
+                  <p className="font-medium text-gray-800">{item.name}</p>
+                  {optionsLine ? (
+                    <p className="text-xs text-rose-800 mt-0.5 leading-snug">{optionsLine}</p>
+                  ) : null}
                   <p className="text-sm text-gray-600">₹{item.price} × {item.quantity} = ₹{item.lineTotal}</p>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
         <div className="p-4 border-t border-rose-100 flex justify-between items-center">
@@ -1031,18 +1282,44 @@ function EditOrderItemsModal({ order, onClose, onSave, onImageClick }) {
 function CategoriesPageContent({ categories, onUpdate }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
-  const [icon, setIcon] = useState('🛍️');
+  const [description, setDescription] = useState('');
+  const [iconEmoji, setIconEmoji] = useState('🛍️');
+  const [iconFile, setIconFile] = useState(null);
+  const [iconPreview, setIconPreview] = useState(null);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!iconFile) {
+      setIconPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(iconFile);
+    setIconPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [iconFile]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
     setError('');
     setSaving(true);
     try {
-      await adminCreateCategory({ name: name || slug, slug: slug || name?.toLowerCase().replace(/\s+/g, '-'), icon: icon || '🛍️' });
-      setName(''); setSlug(''); setIcon('🛍️');
+      const fd = new FormData();
+      fd.append('name', name || slug || '');
+      fd.append('slug', slug || name?.toLowerCase().replace(/\s+/g, '-') || '');
+      if (iconFile) {
+        fd.append('image', iconFile);
+      } else {
+        fd.append('icon', iconEmoji || '🛍️');
+      }
+      fd.append('description', description.trim());
+      await adminCreateCategory(fd);
+      setName('');
+      setSlug('');
+      setDescription('');
+      setIconEmoji('🛍️');
+      setIconFile(null);
       onUpdate();
     } catch (err) {
       setError(err.message);
@@ -1051,10 +1328,22 @@ function CategoriesPageContent({ categories, onUpdate }) {
     }
   };
 
-  const handleUpdate = async (id, newName, newSlug, newIcon) => {
+  const handleUpdate = async (id, newName, newSlug, existingIcon) => {
     setError('');
     try {
-      await adminUpdateCategory(id, { name: newName, slug: newSlug, icon: newIcon || '🛍️' });
+      const file = document.getElementById(`edit-file-${id}`)?.files?.[0];
+      const emojiRaw = document.getElementById(`edit-icon-${id}`)?.value?.trim() ?? '';
+      const fd = new FormData();
+      fd.append('name', newName);
+      fd.append('slug', newSlug);
+      if (file) {
+        fd.append('image', file);
+      } else {
+        fd.append('icon', emojiRaw !== '' ? emojiRaw : (existingIcon || '🛍️'));
+      }
+      const desc = document.getElementById(`edit-desc-${id}`)?.value ?? '';
+      fd.append('description', String(desc).trim());
+      await adminUpdateCategory(id, fd);
       setEditing(null);
       onUpdate();
     } catch (err) {
@@ -1076,29 +1365,114 @@ function CategoriesPageContent({ categories, onUpdate }) {
   return (
     <div className="bg-white rounded-2xl border border-rose-100 p-4 sm:p-6">
       {error && <div className="bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm mb-4">{error}</div>}
-      <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap gap-2 mb-6">
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="border border-rose-200 rounded-lg px-3 py-2.5 w-full" />
-        <input type="text" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="Slug" className="border border-rose-200 rounded-lg px-3 py-2.5 w-full" />
-        <input type="text" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="Icon" className="w-20 border border-rose-200 rounded-lg px-3 py-2.5 text-center" maxLength="2" />
-        <button type="submit" disabled={saving} className="bg-rose-500 text-white px-4 py-2.5 rounded-lg font-medium disabled:opacity-50 touch-manipulation">Add Category</button>
+      <form onSubmit={handleAdd} className="space-y-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap gap-2">
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="border border-rose-200 rounded-lg px-3 py-2.5 w-full" />
+          <input type="text" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="Slug" className="border border-rose-200 rounded-lg px-3 py-2.5 w-full" />
+          <button type="submit" disabled={saving} className="bg-rose-500 text-white px-4 py-2.5 rounded-lg font-medium disabled:opacity-50 touch-manipulation md:shrink-0">
+            Add Category
+          </button>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Categories page blurb</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Short description shown under the category name on the storefront Categories page"
+            rows={2}
+            className="w-full border border-rose-200 rounded-lg px-3 py-2 text-sm resize-y min-h-[2.75rem]"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-sm text-gray-600 shrink-0">Icon</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setIconFile(e.target.files?.[0] || null)}
+            className="text-sm max-w-[200px]"
+          />
+          <span className="text-sm text-gray-500">or emoji</span>
+          <input
+            type="text"
+            value={iconEmoji}
+            onChange={(e) => setIconEmoji(e.target.value)}
+            placeholder="🛍️"
+            disabled={!!iconFile}
+            className="w-24 border border-rose-200 rounded-lg px-3 py-2.5 text-center disabled:opacity-50"
+          />
+          <div className="w-11 h-11 rounded-lg border border-rose-100 bg-cream-50 flex items-center justify-center overflow-hidden text-xl">
+            {iconPreview ? (
+              <img src={iconPreview} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span>{iconEmoji || '🛍️'}</span>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-gray-500">Upload an image (square works best) or leave emoji when no file is chosen.</p>
       </form>
       <ul className="divide-y divide-rose-100">
         {categories.map((c) => (
           <li key={c._id} className="py-3 sm:py-4">
             {editing?._id === c._id ? (
-              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                <input type="text" defaultValue={editing.name} id={`edit-name-${c._id}`} className="flex-1 min-w-0 border border-rose-200 rounded-lg px-3 py-2 text-sm" />
-                <input type="text" defaultValue={editing.slug} id={`edit-slug-${c._id}`} className="flex-1 min-w-0 border border-rose-200 rounded-lg px-3 py-2 text-sm" />
-                <input type="text" defaultValue={editing.icon || '🛍️'} id={`edit-icon-${c._id}`} className="w-16 border border-rose-200 rounded-lg px-2 py-2 text-sm text-center" maxLength="2" />
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => handleUpdate(c._id, document.getElementById(`edit-name-${c._id}`)?.value, document.getElementById(`edit-slug-${c._id}`)?.value, document.getElementById(`edit-icon-${c._id}`)?.value)} className="px-3 py-2 rounded-lg bg-rose-500 text-white text-sm font-medium">Save</button>
-                  <button type="button" onClick={() => setEditing(null)} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">Cancel</button>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center flex-wrap">
+                  <input type="text" defaultValue={editing.name} id={`edit-name-${c._id}`} className="flex-1 min-w-0 border border-rose-200 rounded-lg px-3 py-2 text-sm" />
+                  <input type="text" defaultValue={editing.slug} id={`edit-slug-${c._id}`} className="flex-1 min-w-0 border border-rose-200 rounded-lg px-3 py-2 text-sm" />
+                  <input type="file" accept="image/*" id={`edit-file-${c._id}`} className="text-sm max-w-[200px]" />
+                  <input
+                    type="text"
+                    key={isCategoryIconImage(editing.icon) ? 'url' : 'emoji'}
+                    defaultValue={isCategoryIconImage(editing.icon) ? '' : (editing.icon || '🛍️')}
+                    id={`edit-icon-${c._id}`}
+                    placeholder="Emoji if no new image"
+                    className="w-36 border border-rose-200 rounded-lg px-2 py-2 text-sm text-center"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUpdate(
+                          c._id,
+                          document.getElementById(`edit-name-${c._id}`)?.value,
+                          document.getElementById(`edit-slug-${c._id}`)?.value,
+                          editing.icon
+                        )
+                      }
+                      className="px-3 py-2 rounded-lg bg-rose-500 text-white text-sm font-medium"
+                    >
+                      Save
+                    </button>
+                    <button type="button" onClick={() => setEditing(null)} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+                <div className="w-full">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Categories page blurb</label>
+                  <textarea
+                    id={`edit-desc-${c._id}`}
+                    defaultValue={editing.description || ''}
+                    rows={2}
+                    placeholder="Short description on the Categories page"
+                    className="w-full border border-rose-200 rounded-lg px-3 py-2 text-sm"
+                  />
                 </div>
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                <span className="text-2xl flex-shrink-0">{c.icon || '🛍️'}</span>
-                <span className="font-medium flex-1 min-w-0 truncate">{c.name}</span>
+                <div className="w-10 h-10 rounded-lg border border-rose-100 overflow-hidden flex items-center justify-center flex-shrink-0 bg-cream-50">
+                  <CategoryIcon
+                    icon={c.icon}
+                    className="text-2xl"
+                    imgClassName="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium truncate block">{c.name}</span>
+                  {(c.description && String(c.description).trim()) ? (
+                    <span className="text-xs text-gray-500 line-clamp-2">{c.description}</span>
+                  ) : null}
+                </div>
                 <span className="text-gray-500 text-sm">{c.slug}</span>
                 <span className="text-gray-400 text-sm">({c.count ?? 0} products)</span>
                 <div className="flex gap-2 flex-shrink-0">
@@ -1203,7 +1577,13 @@ function ProcessingTab({ formError, setFormError }) {
   const [includeShipping, setIncludeShipping] = useState(false);
   const [shippingCharge, setShippingCharge] = useState('');
 
-  const isValid = parsed && parsed.items.length > 0 && !parsed.messageTampered && parsed.totalValid && parsed.allItemsValid;
+  const isValid =
+    parsed &&
+    parsed.items.length > 0 &&
+    !parsed.messageTampered &&
+    parsed.totalValid &&
+    parsed.allItemsValid &&
+    parsed.deliveryComplete !== false;
 
   const handleParse = async () => {
     setFormError('');
@@ -1240,6 +1620,7 @@ function ProcessingTab({ formError, setFormError }) {
         total: parsed.total,
         totalValid: true,
         shippingCharge: shipCharge,
+        delivery: parsed.delivery || undefined,
       });
       setCreatedOrder(data);
     } catch (e) {
@@ -1262,7 +1643,8 @@ function ProcessingTab({ formError, setFormError }) {
     <div className="bg-white rounded-2xl border border-rose-100 overflow-hidden p-6">
       <h2 className="font-display text-xl font-bold text-rose-800 mb-4">Process Order</h2>
       <p className="text-sm text-gray-600 mb-4">
-        Paste the WhatsApp order message below. We will validate the total and match items to products.
+        Paste the WhatsApp order message below. We validate line items (NBF), totals, and—if present—the{' '}
+        <strong>*Delivery address*</strong> block (Address / Pincode / State). That address is saved on the order and shown on the bill.
       </p>
       {formError && (
         <div className="mb-4 bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm">{formError}</div>
@@ -1270,7 +1652,7 @@ function ProcessingTab({ formError, setFormError }) {
       <textarea
         value={rawText}
         onChange={(e) => setRawText(e.target.value)}
-        placeholder="Paste order text (e.g. Hi, I would like to place an order: ... • name (NBF: x) – ₹price x qty = ₹lineTotal ... Total: ₹total)"
+        placeholder={`Paste full message including optional footer:\n\nHi, I would like to place an order:\n• name (NBF: x) – ₹price x qty = ₹lineTotal\nTotal: ₹total\n\n*Delivery address*\nAddress: …\nPincode: …\nState: …`}
         rows={6}
         className="w-full border border-rose-200 rounded-lg px-3 py-2 font-mono text-sm"
       />
@@ -1301,9 +1683,16 @@ function ProcessingTab({ formError, setFormError }) {
               <strong>Message may be tampered.</strong> Prices or total do not match our product (NBF) prices. Fix the order message or verify with the customer before creating an order.
             </div>
           )}
-          {!parsed.messageTampered && parsed.totalValid && parsed.allItemsValid && (
+          {parsed.hasDeliverySection && !parsed.deliveryComplete && (
+            <div className="mb-4 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+              <strong>Delivery section incomplete.</strong> After <code className="text-xs">*Delivery address*</code> we need{' '}
+              <strong>Address:</strong>, <strong>Pincode:</strong>, and <strong>State:</strong> lines (as in the customer WhatsApp message). Fix the paste or ask the customer to resend.
+            </div>
+          )}
+          {!parsed.messageTampered && parsed.totalValid && parsed.allItemsValid && parsed.deliveryComplete !== false && (
             <div className="mb-4 px-3 py-2 rounded-lg text-sm bg-green-50 text-green-800">
-              Order validated: all NBF prices and total match. Create order to generate order ID and send to confirmation state.
+              Order validated: all NBF prices and total match
+              {parsed.hasDeliverySection ? ' and delivery address parsed.' : '.'} Create order to generate order ID and send to confirmation state.
             </div>
           )}
           {!parsed.messageTampered && (!parsed.totalValid || !parsed.allItemsValid) && (
@@ -1317,6 +1706,15 @@ function ProcessingTab({ formError, setFormError }) {
           {/* Valid – show items review and Create order button */}
           {isValid && !createdOrder && (
             <>
+              {parsed.hasDeliverySection && parsed.delivery && parsed.deliveryComplete && (
+                <div className="mb-4 p-4 rounded-xl border border-teal-100 bg-teal-50/80">
+                  <p className="text-sm font-semibold text-teal-900 mb-2">Delivery (saved on order)</p>
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{parsed.delivery.address}</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    Pincode: {parsed.delivery.pincode} · State: {parsed.delivery.state}
+                  </p>
+                </div>
+              )}
               <p className="text-sm font-medium text-gray-700 mb-2">Review items:</p>
               <ul className="space-y-3 mb-4">
                 {parsed.items.map((item, idx) => (
@@ -1384,10 +1782,16 @@ function ProcessingTab({ formError, setFormError }) {
                 <p className="text-lg font-mono font-bold text-green-900 mt-1">Order ID: {createdOrder.order?.orderId}</p>
                 <p className="text-sm text-green-700 mt-2">Status: Pending — confirm in Orders tab to proceed.</p>
               </div>
-              <pre className="mb-6 p-4 bg-cream-50 rounded-lg border border-rose-100 text-sm whitespace-pre-wrap font-mono overflow-x-auto">
-                {createdOrder.bill}
-              </pre>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4 items-center">
+                {isBillHtml(createdOrder.bill) && (
+                  <button
+                    type="button"
+                    onClick={() => printHtmlBill(createdOrder.bill)}
+                    className="text-sm px-3 py-1.5 rounded-lg bg-rose-500 text-white font-medium hover:bg-rose-600"
+                  >
+                    Print / Save as PDF
+                  </button>
+                )}
                 <Link to="/admin/dashboard/orders" className="text-rose-600 font-medium hover:underline">
                   View in Orders →
                 </Link>
@@ -1401,7 +1805,9 @@ function ProcessingTab({ formError, setFormError }) {
       )}
 
       {parsed && parsed.items.length === 0 && (
-        <p className="mt-4 text-amber-700 text-sm">No order lines found. Use format: • name (NBF: x) – ₹price x qty = ₹lineTotal and Total: ₹total</p>
+        <p className="mt-4 text-amber-700 text-sm">
+          No order lines found. Use: • name (NBF: x) – ₹price x qty = ₹lineTotal and Total: ₹total. Optional: *Delivery address* then Address / Pincode / State lines.
+        </p>
       )}
     </div>
   );
@@ -1453,16 +1859,63 @@ function ConfirmOrderModal({ orderId, customerName, customerPhone, setCustomerNa
   );
 }
 
-function OrderStatusActions({ order, updatingOrderId, trackingInput, setTrackingInput, setUpdatingOrderId, onUpdate, onOpenPackingChecklist }) {
+function OrderStatusActions({
+  order,
+  updatingOrderId,
+  trackingInput,
+  setTrackingInput,
+  carrierInput,
+  setCarrierInput,
+  setUpdatingOrderId,
+  onUpdate,
+  onOpenPackingChecklist,
+  onAfterAccept,
+  onAfterDecline,
+}) {
   const [showTracking, setShowTracking] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [updatePopupOpen, setUpdatePopupOpen] = useState(false);
   const [confirmCustomerName, setConfirmCustomerName] = useState(order.customerName || '');
   const [confirmCustomerPhone, setConfirmCustomerPhone] = useState(order.customerPhone || '');
-  const status = order.status === 'completed' ? 'confirmed' : (order.status || 'pending');
+  const status =
+    order.status === 'completed' ? 'confirmed' : order.status === 'returned' ? 'returned' : order.status || 'pending';
   const paymentStatus = order.paymentStatus || 'pending';
   const isPaid = paymentStatus === 'paid';
   const isPending = status === 'pending';
   const isCancelled = status === 'cancelled';
+  const isReturned = status === 'returned';
+  const showAcceptDecline = isPending;
+
+  useEffect(() => {
+    if (!updatePopupOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setUpdatePopupOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [updatePopupOpen]);
+
+  useEffect(() => {
+    if (!showTracking) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowTracking(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showTracking]);
+
+  const openShipForm = () => {
+    setUpdatePopupOpen(false);
+    setTrackingInput((prev) => ({
+      ...prev,
+      [order._id]: order.trackingNumber || prev[order._id] || '',
+    }));
+    setCarrierInput((prev) => ({
+      ...prev,
+      [order._id]: order.shippingCarrier || prev[order._id] || '',
+    }));
+    setShowTracking(true);
+  };
 
   const handlePaymentStatus = async (newPaymentStatus) => {
     setUpdatingOrderId(order._id);
@@ -1479,12 +1932,26 @@ function OrderStatusActions({ order, updatingOrderId, trackingInput, setTracking
   const handleStatus = async (newStatus) => {
     setUpdatingOrderId(order._id);
     try {
-      await adminUpdateOrder(order._id, {
-        status: newStatus,
-        ...(newStatus === 'shipped' && trackingInput[order._id] ? { trackingNumber: trackingInput[order._id] } : {}),
-      });
+      const payload = { status: newStatus };
+      if (newStatus === 'shipped') {
+        payload.trackingNumber = String(trackingInput[order._id] || '').trim();
+        payload.shippingCarrier = String(carrierInput[order._id] || '').trim();
+      }
+      await adminUpdateOrder(order._id, payload);
       onUpdate();
-      if (newStatus === 'shipped') setShowTracking(false);
+      if (newStatus === 'shipped') {
+        setShowTracking(false);
+        setTrackingInput((prev) => {
+          const next = { ...prev };
+          delete next[order._id];
+          return next;
+        });
+        setCarrierInput((prev) => {
+          const next = { ...prev };
+          delete next[order._id];
+          return next;
+        });
+      }
     } catch (e) {
       alert(e.message || 'Failed to update');
     } finally {
@@ -1492,144 +1959,330 @@ function OrderStatusActions({ order, updatingOrderId, trackingInput, setTracking
     }
   };
 
+  const submitShipped = () => {
+    const tn = String(trackingInput[order._id] || '').trim();
+    const sc = String(carrierInput[order._id] || '').trim();
+    if (!tn || !sc) {
+      alert('Please enter the tracking ID and the shipping company name.');
+      return;
+    }
+    handleStatus('shipped');
+  };
+
   const handleCancelOrder = () => {
     if (!confirm('Mark this order as cancelled? (e.g. customer cancelled the order)')) return;
+    setUpdatePopupOpen(false);
     handleStatus('cancelled');
   };
 
+  const handleAcceptOrder = () => {
+    // Open confirm modal to capture/adjust customer details before confirming.
+    setUpdatePopupOpen(false);
+    setConfirmCustomerName(order.customerName || '');
+    setConfirmCustomerPhone(order.customerPhone || '');
+    setShowConfirmModal(true);
+  };
+
+  const handleDeclineOrder = async () => {
+    if (!confirm('Decline this order?')) return;
+    setUpdatingOrderId(order._id);
+    try {
+      await adminUpdateOrder(order._id, { status: 'cancelled' });
+      const updated = { ...order, status: 'cancelled' };
+      onUpdate();
+      onAfterDecline?.(updated);
+    } catch (e) {
+      alert(e.message || 'Failed to decline order');
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
+  const handleMarkReturnedOrder = () => {
+    if (!confirm('Mark this order as returned? (e.g. customer sent items back.)')) return;
+    setUpdatePopupOpen(false);
+    handleStatus('returned');
+  };
+
+  const showCancelInMenu = !isCancelled && !isReturned && status !== 'shipped';
+  const showConfirmInMenu = isPending;
+  const showMarkPaidInMenu = !isPending && !isPaid && !isCancelled && !isReturned;
+  const showMarkPackedInMenu =
+    !isPending && isPaid && status !== 'packed' && status !== 'shipped' && !isCancelled && !isReturned;
+  const showMarkShippedInMenu = status === 'packed' && !showTracking && !isReturned;
+  const showAddTrackingInMenu =
+    status === 'shipped' && (!order.trackingNumber || !order.shippingCarrier) && !showTracking && !isReturned;
+  const showMarkReturnedInMenu = (status === 'shipped' || status === 'packed') && !isReturned && !isCancelled;
+  const hasUpdateMenu =
+    showCancelInMenu ||
+    showConfirmInMenu ||
+    showMarkPaidInMenu ||
+    showMarkPackedInMenu ||
+    showMarkShippedInMenu ||
+    showAddTrackingInMenu ||
+    showMarkReturnedInMenu;
+
+  const popupBtnClass =
+    'block w-full text-left text-sm px-4 py-3 rounded-xl border-0 font-medium transition disabled:opacity-50';
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {/* Cancel order - when not already shipped or cancelled */}
-      {!isCancelled && status !== 'shipped' && (
-        <button
-          type="button"
-          onClick={handleCancelOrder}
-          disabled={updatingOrderId === order._id}
-          className="text-xs px-2 py-1 rounded bg-red-100 text-red-800 font-medium hover:bg-red-200 disabled:opacity-50"
-          title="Cancel order (e.g. customer cancelled)"
-        >
-          Cancel order
-        </button>
-      )}
-      {/* Confirm order - only when pending; opens modal for customer name & phone */}
-      {isPending && (
+    <div className="flex flex-wrap items-start gap-2">
+      {showAcceptDecline ? (
         <>
           <button
             type="button"
-            onClick={() => {
-              setConfirmCustomerName(order.customerName || '');
-              setConfirmCustomerPhone(order.customerPhone || '');
-              setShowConfirmModal(true);
-            }}
+            onClick={handleAcceptOrder}
             disabled={updatingOrderId === order._id}
-            className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-800 font-medium hover:bg-rose-200 disabled:opacity-50"
+            className="text-xs px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 font-medium hover:bg-emerald-100 disabled:opacity-50"
           >
-            Confirm order
+            ✅ Accept
           </button>
-          {showConfirmModal && (
-            <ConfirmOrderModal
-              orderId={order.orderId}
-              customerName={confirmCustomerName}
-              customerPhone={confirmCustomerPhone}
-              setCustomerName={setConfirmCustomerName}
-              setCustomerPhone={setConfirmCustomerPhone}
-              onClose={() => setShowConfirmModal(false)}
-              onConfirm={async () => {
-                setUpdatingOrderId(order._id);
-                try {
-                  await adminUpdateOrder(order._id, {
-                    status: 'confirmed',
-                    customerName: confirmCustomerName.trim(),
-                    customerPhone: confirmCustomerPhone.trim(),
-                  });
-                  setShowConfirmModal(false);
-                  onUpdate();
-                } catch (e) {
-                  alert(e.message || 'Failed to confirm order');
-                } finally {
-                  setUpdatingOrderId(null);
-                }
-              }}
-              updating={updatingOrderId === order._id}
-            />
-          )}
+          <button
+            type="button"
+            onClick={handleDeclineOrder}
+            disabled={updatingOrderId === order._id}
+            className="text-xs px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 font-medium hover:bg-rose-100 disabled:opacity-50"
+          >
+            ❌ Decline
+          </button>
         </>
+      ) : (
+        hasUpdateMenu && (
+          <button
+            type="button"
+            onClick={() => setUpdatePopupOpen(true)}
+            disabled={updatingOrderId === order._id}
+            className="text-xs px-3 py-1.5 rounded-lg border border-rose-200 bg-white text-rose-800 font-medium hover:bg-rose-50 disabled:opacity-50"
+            aria-haspopup="dialog"
+          >
+            Update order
+          </button>
+        )
       )}
-      {/* Payment status toggle - only after confirmed */}
-      {!isPending && !isPaid && (
-        <button
-          type="button"
-          onClick={() => handlePaymentStatus('paid')}
-          disabled={updatingOrderId === order._id}
-          className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 font-medium hover:bg-blue-200 disabled:opacity-50"
+
+      {updatePopupOpen && hasUpdateMenu && !showAcceptDecline && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="update-order-popup-title"
+          onClick={() => setUpdatePopupOpen(false)}
         >
-          Mark Paid
-        </button>
-      )}
-      {/* Packed button - opens packing checklist popup */}
-      {!isPending && isPaid && status !== 'packed' && status !== 'shipped' && (
-        <button
-          type="button"
-          onClick={() => (onOpenPackingChecklist ? onOpenPackingChecklist() : handleStatus('packed'))}
-          disabled={updatingOrderId === order._id}
-          className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 font-medium hover:bg-amber-200 disabled:opacity-50"
-        >
-          Mark Packed
-        </button>
-      )}
-      {/* Shipped button - only if packed */}
-      {(status === 'packed' || showTracking) && (
-        <>
-          {!showTracking ? (
-            status === 'packed' && (
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full max-h-[85vh] overflow-y-auto border border-rose-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-rose-100 flex items-center justify-between gap-2">
+              <div>
+                <h3 id="update-order-popup-title" className="font-display text-lg font-bold text-rose-800">
+                  Update order
+                </h3>
+                <p className="text-xs text-gray-500 font-mono mt-0.5">{order.orderId}</p>
+              </div>
               <button
                 type="button"
-                onClick={() => setShowTracking(true)}
-                disabled={updatingOrderId === order._id}
-                className="text-xs px-2 py-1 rounded bg-green-100 text-green-800 font-medium hover:bg-green-200 disabled:opacity-50"
+                onClick={() => setUpdatePopupOpen(false)}
+                className="text-gray-400 hover:text-gray-700 text-2xl leading-none p-1"
+                aria-label="Close"
               >
-                Mark Shipped
+                ×
               </button>
-            )
-          ) : (
-            <div className="flex items-center gap-1">
-              <input
-                type="text"
-                placeholder="Tracking number"
-                value={trackingInput[order._id] || ''}
-                onChange={(e) => setTrackingInput((prev) => ({ ...prev, [order._id]: e.target.value }))}
-                className="w-32 border border-rose-200 rounded px-2 py-1 text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => handleStatus('shipped')}
-                disabled={updatingOrderId === order._id}
-                className="text-xs px-2 py-1 rounded bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50"
-              >
-                Ship & Save
-              </button>
+            </div>
+            <div className="p-3 flex flex-col gap-2">
+              {showCancelInMenu && (
+                <button
+                  type="button"
+                  onClick={handleCancelOrder}
+                  disabled={updatingOrderId === order._id}
+                  className={`${popupBtnClass} bg-red-50 text-red-800 hover:bg-red-100`}
+                >
+                  Cancel order
+                </button>
+              )}
+              {showConfirmInMenu && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUpdatePopupOpen(false);
+                    setConfirmCustomerName(order.customerName || '');
+                    setConfirmCustomerPhone(order.customerPhone || '');
+                    setShowConfirmModal(true);
+                  }}
+                  disabled={updatingOrderId === order._id}
+                  className={`${popupBtnClass} bg-rose-50 text-rose-800 hover:bg-rose-100`}
+                >
+                  Confirm order
+                </button>
+              )}
+              {showMarkPaidInMenu && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUpdatePopupOpen(false);
+                    handlePaymentStatus('paid');
+                  }}
+                  disabled={updatingOrderId === order._id}
+                  className={`${popupBtnClass} bg-blue-50 text-blue-800 hover:bg-blue-100`}
+                >
+                  Mark Paid
+                </button>
+              )}
+              {showMarkPackedInMenu && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUpdatePopupOpen(false);
+                    if (onOpenPackingChecklist) {
+                      onOpenPackingChecklist();
+                    } else {
+                      handleStatus('packed');
+                    }
+                  }}
+                  disabled={updatingOrderId === order._id}
+                  className={`${popupBtnClass} bg-amber-50 text-amber-800 hover:bg-amber-100`}
+                >
+                  Mark Packed
+                </button>
+              )}
+              {showMarkShippedInMenu && (
+                <button
+                  type="button"
+                  onClick={openShipForm}
+                  disabled={updatingOrderId === order._id}
+                  className={`${popupBtnClass} bg-green-50 text-green-800 hover:bg-green-100`}
+                >
+                  Mark Shipped
+                </button>
+              )}
+              {showAddTrackingInMenu && (
+                <button
+                  type="button"
+                  onClick={openShipForm}
+                  className={`${popupBtnClass} bg-green-50 text-green-700 hover:bg-green-100`}
+                >
+                  Add tracking
+                </button>
+              )}
+              {showMarkReturnedInMenu && (
+                <button
+                  type="button"
+                  onClick={handleMarkReturnedOrder}
+                  disabled={updatingOrderId === order._id}
+                  className={`${popupBtnClass} bg-orange-50 text-orange-900 hover:bg-orange-100`}
+                >
+                  Mark returned
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfirmModal && (
+        <ConfirmOrderModal
+          orderId={order.orderId}
+          customerName={confirmCustomerName}
+          customerPhone={confirmCustomerPhone}
+          setCustomerName={setConfirmCustomerName}
+          setCustomerPhone={setConfirmCustomerPhone}
+          onClose={() => setShowConfirmModal(false)}
+          onConfirm={async () => {
+            setUpdatingOrderId(order._id);
+            try {
+              const nextCustomerName = confirmCustomerName.trim();
+              const nextCustomerPhone = confirmCustomerPhone.trim();
+              await adminUpdateOrder(order._id, {
+                status: 'confirmed',
+                customerName: nextCustomerName,
+                customerPhone: nextCustomerPhone,
+              });
+              setShowConfirmModal(false);
+              onUpdate();
+              onAfterAccept?.({
+                ...order,
+                status: 'confirmed',
+                customerName: nextCustomerName,
+                customerPhone: nextCustomerPhone,
+              });
+            } catch (e) {
+              alert(e.message || 'Failed to confirm order');
+            } finally {
+              setUpdatingOrderId(null);
+            }
+          }}
+          updating={updatingOrderId === order._id}
+        />
+      )}
+
+      {showTracking && (
+        <div
+          className="fixed inset-0 z-[301] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ship-order-modal-title"
+          onClick={() => setShowTracking(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full border border-rose-100 p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="ship-order-modal-title" className="font-display text-lg font-bold text-rose-800">
+              Shipment details
+            </h3>
+            <p className="text-xs text-gray-500 font-mono mt-1 mb-4">{order.orderId}</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tracking ID</label>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={trackingInput[order._id] || ''}
+                  onChange={(e) => setTrackingInput((prev) => ({ ...prev, [order._id]: e.target.value }))}
+                  className="w-full border border-rose-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="e.g. AWB / consignment number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Shipped by (company)</label>
+                <input
+                  type="text"
+                  autoComplete="organization"
+                  value={carrierInput[order._id] || ''}
+                  onChange={(e) => setCarrierInput((prev) => ({ ...prev, [order._id]: e.target.value }))}
+                  className="w-full border border-rose-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="e.g. Blue Dart, DTDC, India Post"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2 justify-end">
               <button
                 type="button"
                 onClick={() => setShowTracking(false)}
-                className="text-xs text-gray-500 hover:underline"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  submitShipped();
+                  setUpdatePopupOpen(false);
+                }}
+                disabled={updatingOrderId === order._id}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+              >
+                {updatingOrderId === order._id ? 'Saving…' : 'Mark shipped'}
+              </button>
             </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
-      {status === 'shipped' && order.trackingNumber && (
-        <span className="text-xs text-gray-500 font-mono">{order.trackingNumber}</span>
-      )}
-      {status === 'shipped' && !order.trackingNumber && !showTracking && (
-        <button
-          type="button"
-          onClick={() => setShowTracking(true)}
-          className="text-xs text-green-600 font-medium hover:underline"
-        >
-          Add tracking
-        </button>
+      {(order.status === 'shipped' || order.status === 'completed') &&
+        (order.trackingNumber || order.shippingCarrier) && (
+        <div className="text-xs text-gray-500 space-y-0.5 w-full min-w-0">
+          {order.trackingNumber ? <p className="font-mono break-all">{order.trackingNumber}</p> : null}
+          {order.shippingCarrier ? <p className="text-gray-600">{order.shippingCarrier}</p> : null}
+        </div>
       )}
     </div>
   );
@@ -1818,7 +2471,7 @@ function ProductFormModal({ product, categories = [], saving, formError, onClose
                 type="text"
                 value={nbfCode}
                 onChange={(e) => setNbfCode(e.target.value)}
-                placeholder="e.g. NBF-001 (shown in orders)"
+                placeholder="e.g. 001 (shown in orders)"
                 className="flex-1 border border-rose-200 rounded-lg px-3 py-2"
               />
               {!isEdit && (
@@ -1973,24 +2626,44 @@ function ProductFormModal({ product, categories = [], saving, formError, onClose
 function CategoriesModal({ categories, onClose, onUpdate }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
-  const [icon, setIcon] = useState('🛍️');
+  const [description, setDescription] = useState('');
+  const [iconEmoji, setIconEmoji] = useState('🛍️');
+  const [iconFile, setIconFile] = useState(null);
+  const [iconPreview, setIconPreview] = useState(null);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!iconFile) {
+      setIconPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(iconFile);
+    setIconPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [iconFile]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
     setError('');
     setSaving(true);
     try {
-      await adminCreateCategory({ 
-        name: name || slug, 
-        slug: slug || name?.toLowerCase().replace(/\s+/g, '-'),
-        icon: icon || '🛍️'
-      });
+      const fd = new FormData();
+      fd.append('name', name || slug || '');
+      fd.append('slug', slug || name?.toLowerCase().replace(/\s+/g, '-') || '');
+      if (iconFile) {
+        fd.append('image', iconFile);
+      } else {
+        fd.append('icon', iconEmoji || '🛍️');
+      }
+      fd.append('description', description.trim());
+      await adminCreateCategory(fd);
       setName('');
       setSlug('');
-      setIcon('🛍️');
+      setDescription('');
+      setIconEmoji('🛍️');
+      setIconFile(null);
       onUpdate();
     } catch (err) {
       setError(err.message);
@@ -1999,10 +2672,22 @@ function CategoriesModal({ categories, onClose, onUpdate }) {
     }
   };
 
-  const handleUpdate = async (id, newName, newSlug, newIcon) => {
+  const handleUpdate = async (id, newName, newSlug, existingIcon) => {
     setError('');
     try {
-      await adminUpdateCategory(id, { name: newName, slug: newSlug, icon: newIcon || '🛍️' });
+      const file = document.getElementById(`modal-edit-file-${id}`)?.files?.[0];
+      const emojiRaw = document.getElementById(`modal-edit-icon-${id}`)?.value?.trim() ?? '';
+      const fd = new FormData();
+      fd.append('name', newName);
+      fd.append('slug', newSlug);
+      if (file) {
+        fd.append('image', file);
+      } else {
+        fd.append('icon', emojiRaw !== '' ? emojiRaw : (existingIcon || '🛍️'));
+      }
+      const desc = document.getElementById(`modal-edit-desc-${id}`)?.value ?? '';
+      fd.append('description', String(desc).trim());
+      await adminUpdateCategory(id, fd);
       setEditing(null);
       onUpdate();
     } catch (err) {
@@ -2030,29 +2715,84 @@ function CategoriesModal({ categories, onClose, onUpdate }) {
         </div>
         <div className="p-6 space-y-4">
           {error && <div className="bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm">{error}</div>}
-          <form onSubmit={handleAdd} className="space-y-2">
-            <div className="flex gap-2">
+          <form onSubmit={handleAdd} className="space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="flex-1 border border-rose-200 rounded-lg px-3 py-2" />
               <input type="text" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="Slug" className="flex-1 border border-rose-200 rounded-lg px-3 py-2" />
-              <input type="text" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="Icon (emoji)" className="w-20 border border-rose-200 rounded-lg px-3 py-2 text-center" maxLength="2" />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="file" accept="image/*" onChange={(e) => setIconFile(e.target.files?.[0] || null)} className="text-sm flex-1 min-w-0" />
+              <input
+                type="text"
+                value={iconEmoji}
+                onChange={(e) => setIconEmoji(e.target.value)}
+                placeholder="Emoji"
+                disabled={!!iconFile}
+                className="w-20 border border-rose-200 rounded-lg px-2 py-2 text-center text-sm disabled:opacity-50"
+              />
+              <div className="w-9 h-9 rounded-lg border border-rose-100 overflow-hidden flex items-center justify-center bg-cream-50 text-lg">
+                {iconPreview ? <img src={iconPreview} alt="" className="w-full h-full object-cover" /> : <span>{iconEmoji || '🛍️'}</span>}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Categories page blurb</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Short description under the category name on the storefront"
+                rows={2}
+                className="w-full border border-rose-200 rounded-lg px-3 py-2 text-sm"
+              />
             </div>
             <button type="submit" disabled={saving} className="w-full bg-rose-500 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50">Add Category</button>
           </form>
           <ul className="divide-y divide-rose-100 mt-4">
             {categories.map((c) => (
-              <li key={c._id} className="py-3 flex items-center justify-between gap-2">
+              <li key={c._id} className={`py-3 ${editing?._id === c._id ? '' : 'flex flex-wrap items-center justify-between gap-2'}`}>
                 {editing?._id === c._id ? (
-                  <>
-                    <input type="text" defaultValue={editing.name} id={`edit-name-${c._id}`} className="flex-1 border rounded px-2 py-1 text-sm" />
-                    <input type="text" defaultValue={editing.slug} id={`edit-slug-${c._id}`} className="flex-1 border rounded px-2 py-1 text-sm" />
-                    <input type="text" defaultValue={editing.icon || '🛍️'} id={`edit-icon-${c._id}`} className="w-16 border rounded px-2 py-1 text-sm text-center" maxLength="2" />
-                    <button type="button" onClick={() => handleUpdate(c._id, document.getElementById(`edit-name-${c._id}`)?.value, document.getElementById(`edit-slug-${c._id}`)?.value, document.getElementById(`edit-icon-${c._id}`)?.value)} className="text-rose-600 text-sm">Save</button>
-                    <button type="button" onClick={() => setEditing(null)} className="text-gray-500 text-sm">Cancel</button>
-                  </>
+                  <div className="space-y-2 w-full">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input type="text" defaultValue={editing.name} id={`modal-edit-name-${c._id}`} className="flex-1 min-w-[100px] border rounded px-2 py-1 text-sm" />
+                      <input type="text" defaultValue={editing.slug} id={`modal-edit-slug-${c._id}`} className="flex-1 min-w-[100px] border rounded px-2 py-1 text-sm" />
+                      <input type="file" accept="image/*" id={`modal-edit-file-${c._id}`} className="text-xs max-w-[120px]" />
+                      <input
+                        type="text"
+                        key={isCategoryIconImage(editing.icon) ? 'm-url' : 'm-emoji'}
+                        defaultValue={isCategoryIconImage(editing.icon) ? '' : (editing.icon || '🛍️')}
+                        id={`modal-edit-icon-${c._id}`}
+                        placeholder="Emoji"
+                        className="w-16 border rounded px-2 py-1 text-sm text-center"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUpdate(
+                            c._id,
+                            document.getElementById(`modal-edit-name-${c._id}`)?.value,
+                            document.getElementById(`modal-edit-slug-${c._id}`)?.value,
+                            editing.icon
+                          )
+                        }
+                        className="text-rose-600 text-sm font-medium"
+                      >
+                        Save
+                      </button>
+                      <button type="button" onClick={() => setEditing(null)} className="text-gray-500 text-sm">Cancel</button>
+                    </div>
+                    <textarea
+                      id={`modal-edit-desc-${c._id}`}
+                      defaultValue={editing.description || ''}
+                      rows={2}
+                      placeholder="Categories page blurb"
+                      className="w-full border border-rose-200 rounded-lg px-2 py-1 text-sm"
+                    />
+                  </div>
                 ) : (
                   <>
-                    <span className="text-2xl">{c.icon || '🛍️'}</span>
-                    <span className="font-medium flex-1">{c.name}</span>
+                    <div className="w-8 h-8 rounded overflow-hidden border border-rose-100 flex items-center justify-center bg-cream-50 flex-shrink-0">
+                      <CategoryIcon icon={c.icon} className="text-lg" imgClassName="w-full h-full object-cover" />
+                    </div>
+                    <span className="font-medium flex-1 min-w-0">{c.name}</span>
                     <span className="text-gray-500 text-sm">{c.slug}</span>
                     <span className="text-gray-400 text-sm">({c.count ?? 0} products)</span>
                     <button type="button" onClick={() => setEditing(c)} className="text-rose-600 text-sm">Edit</button>
@@ -2353,6 +3093,10 @@ function BannerFormModal({ banner, categories, onClose, onSave, saving }) {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Image *</label>
+            <p className="text-xs text-gray-500 mb-2">
+              Recommended banner size: <span className="font-mono">41:20</span> ratio (e.g.{' '}
+              <span className="font-mono">2050×1000</span> or <span className="font-mono">1230×600</span>).
+            </p>
             {image && !imageFile && (
               <img src={image} alt="Preview" className="w-full h-48 object-cover rounded-lg mb-2" />
             )}

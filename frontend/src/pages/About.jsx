@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { whatsappChatUrl } from '../utils/whatsapp';
 import elle18Logo from '../assets/brands/elle18.png';
 
 const COSMETIC_BRANDS = [
@@ -73,9 +72,9 @@ export default function About() {
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-rose-800 mb-4">
             NEW BALAJI BANGLES & FANCY
           </h1>
-          <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-            Bangles, Jewellery, Cosmetics & Fashion Accessories. Order on WhatsApp.
-          </p>
+            <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+              Bangles, Jewellery, Cosmetics & Fashion Accessories. Shop online or visit our store.
+            </p>
           <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto mb-8">OR</p>
           <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto mb-8">
           Visit our store to see and experience the products.
@@ -87,14 +86,6 @@ export default function About() {
             >
               Shop Now
             </Link>
-            <a
-              href={whatsappChatUrl('Hi, I would like to know more about your products.')}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-green-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-green-600 transition"
-            >
-              Order on WhatsApp
-            </a>
           </div>
         </div>
 
@@ -113,8 +104,7 @@ export default function About() {
             </p>
             <p className="text-gray-600 leading-relaxed mb-4">
               We believe shopping for beauty and accessories should feel warm and personal. That’s why we combine
-              an in‑store experience with simple WhatsApp ordering — so you can explore collections at your pace
-              and confirm orders the way that’s most comfortable for you.
+              an in-store experience so you can explore collections at your pace and get personal help.
             </p>
 
             <h3 className="font-display text-xl font-semibold text-rose-800 mt-6 mb-3">
@@ -131,7 +121,7 @@ export default function About() {
               </div>
               <div className="rounded-xl bg-cream-100 border border-rose-100 p-3">
                 <p className="font-semibold mb-1">Easy ordering</p>
-                <p>See products in store or place orders directly on WhatsApp.</p>
+                <p>See products in store or place online orders from our website.</p>
               </div>
             </div>
           </div>

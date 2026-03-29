@@ -1,6 +1,7 @@
 import express from 'express';
 import OfferBanner from '../models/OfferBanner.js';
 import { protect } from '../middleware/auth.js';
+import { emitSiteDataUpdated } from '../siteSocket.js';
 
 const router = express.Router();
 
@@ -43,6 +44,7 @@ router.put('/', protect, async (req, res) => {
       },
       { new: true, upsert: true }
     ).lean();
+    emitSiteDataUpdated();
     res.json(doc);
   } catch (err) {
     res.status(500).json({ message: err.message });

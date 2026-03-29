@@ -11,8 +11,12 @@ export function whatsappOrderUrl(productName, price, nbfCode, selectedOptions) {
   return `https://wa.me/${WHATSAPP_NUMBER.replace(/\D/g, '')}?text=${text}`;
 }
 
-/** Build WhatsApp message for full cart order (with NBF codes and options) */
-export function whatsappCartOrderMessage(cartItems) {
+/**
+ * Build WhatsApp message for full cart order (with NBF codes and options).
+ * @param {Array} cartItems
+ * @param {{ address: string, pincode: string, state: string } | null} delivery - optional delivery details
+ */
+export function whatsappCartOrderMessage(cartItems, delivery = null) {
   const lines = cartItems.map((item) => {
     let line = `• ${item.name}`;
     if (item.nbfCode) line += ` (NBF: ${item.nbfCode})`;
@@ -23,7 +27,13 @@ export function whatsappCartOrderMessage(cartItems) {
     return line;
   });
   const total = cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const message = `Hi, I would like to place an order:\n\n${lines.join('\n')}\n\nTotal: ₹${total}`;
+  let message = `Hi, I would like to place an order:\n\n${lines.join('\n')}\n\nTotal: ₹${total}`;
+  if (delivery && (delivery.address || delivery.pincode || delivery.state)) {
+    message += '\n\n*Delivery address*';
+    if (delivery.address?.trim()) message += `\nAddress: ${delivery.address.trim()}`;
+    if (delivery.pincode?.trim()) message += `\nPincode: ${delivery.pincode.trim()}`;
+    if (delivery.state?.trim()) message += `\nState: ${delivery.state.trim()}`;
+  }
   return message;
 }
 
