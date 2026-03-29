@@ -49,7 +49,6 @@ export default function Cart() {
                 <p className="text-sm font-medium text-red-700 mb-1">{message}</p>
               )}
               <p className="font-semibold text-gray-800">{item.name}</p>
-              {item.nbfCode && <p className="text-xs text-gray-500">NBF: {item.nbfCode}</p>}
               {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
                 <p className="text-sm text-gray-600">
                   {Object.entries(item.selectedOptions).map(([k, v]) => `${k}: ${v}`).join(', ')}

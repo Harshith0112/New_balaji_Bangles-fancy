@@ -172,9 +172,6 @@ export default function ProductDetail() {
           <p className="text-gray-600 mb-6 whitespace-pre-wrap">
             {product.description || 'No description available.'}
           </p>
-          {product.nbfCode && (
-            <p className="text-sm text-gray-500 mb-2">Code: <span className="font-mono font-medium">{product.nbfCode}</span></p>
-          )}
           {product.options?.length > 0 && (
             <div className="mb-6 space-y-3">
               {(product.options || []).map((opt) => {

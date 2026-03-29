@@ -6,6 +6,21 @@ import StoreProductSearch from './StoreProductSearch';
 const PHONE_KEY = 'nbf-customer-phone';
 const CUSTOMER_TOKEN_KEY = 'nbf-customer-token';
 const STORE_PHONE = import.meta.env.VITE_STORE_PHONE || '+91 98765 43210';
+const BRAND = 'New Balaji Bangles and Fancy';
+const DEFAULT_TITLE = `${BRAND} | Bangles, Jewellery & Accessories`;
+const BASE_DESC =
+  'New Balaji Bangles and Fancy — bangles, jewellery, cosmetics & fashion accessories. Shop online.';
+
+function setDocumentMeta(title, description) {
+  document.title = title;
+  let meta = document.querySelector('meta[name="description"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', 'description');
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute('content', description);
+}
 
 function normalizeDigits(s) {
   return String(s || '').replace(/\D/g, '').slice(0, 15);
@@ -21,6 +36,36 @@ export default function Layout() {
   useEffect(() => {
     // Ensure navigation opens new pages at top (footer/header links, etc.)
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const path = location.pathname;
+    let title = DEFAULT_TITLE;
+    let desc = BASE_DESC;
+    if (path === '/' || path === '') {
+      title = `${BRAND} — Home`;
+    } else if (path === '/shop' || path.startsWith('/categories')) {
+      title = `Shop | ${BRAND}`;
+      desc = 'Browse bangles, jewellery, cosmetics and accessories.';
+    } else if (path.startsWith('/product/')) {
+      title = `Product | ${BRAND}`;
+      desc = BASE_DESC;
+    } else if (path === '/cart') {
+      title = `Cart | ${BRAND}`;
+    } else if (path.startsWith('/checkout')) {
+      title = `Checkout | ${BRAND}`;
+    } else if (path === '/about') {
+      title = `About Us | ${BRAND}`;
+      desc = 'Learn about New Balaji Bangles and Fancy.';
+    } else if (path === '/contact') {
+      title = `Contact | ${BRAND}`;
+      desc = 'Contact New Balaji Bangles and Fancy.';
+    } else if (path === '/track') {
+      title = `Track Order | ${BRAND}`;
+    } else if (path.startsWith('/customer')) {
+      title = `My Account | ${BRAND}`;
+    }
+    setDocumentMeta(title, desc);
   }, [location.pathname]);
 
   useLayoutEffect(() => {
