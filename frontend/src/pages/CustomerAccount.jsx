@@ -171,7 +171,7 @@ export default function CustomerAccount() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10 md:py-14">
+    <div className="max-w-md md:max-w-4xl mx-auto px-3 md:px-4 py-10 md:py-14">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="font-display text-3xl font-bold text-rose-800">My Account</h1>
@@ -190,8 +190,8 @@ export default function CustomerAccount() {
 
       {error && <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-sm">{error}</div>}
 
-      <div className="grid md:grid-cols-2 gap-6 items-start">
-        <div className="bg-white rounded-2xl border border-rose-100 p-5">
+      <div className="grid md:grid-cols-2 gap-4 md:gap-6 items-start">
+        <div className="bg-white rounded-2xl border border-rose-100 p-4 md:p-5">
           <h2 className="font-display text-xl font-bold text-rose-800 mb-4">Profile</h2>
           <div className="space-y-2 text-sm text-gray-700">
             <div className="flex justify-between gap-3">
@@ -204,15 +204,19 @@ export default function CustomerAccount() {
             </div>
           </div>
 
-          <div className="mt-5">
-            <h3 className="font-display text-sm font-bold text-rose-800 mb-3">Saved addresses</h3>
-            {profile?.addresses?.length ? (
+          {profile?.addresses?.length ? (
+            <div className="mt-5">
+              <h3 className="font-display text-sm font-bold text-rose-800 mb-3">Saved addresses</h3>
               <div className="space-y-3">
                 {profile.addresses.map((a) => (
                   <div key={a._id} className="border border-rose-100 rounded-xl p-3 bg-cream-50">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        {a.label ? <p className="text-xs font-semibold text-rose-700">{a.label}</p> : <p className="text-xs font-semibold text-rose-700">Address</p>}
+                        {a.label ? (
+                          <p className="text-xs font-semibold text-rose-700">{a.label}</p>
+                        ) : (
+                          <p className="text-xs font-semibold text-rose-700">Address</p>
+                        )}
                         <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
                           {[
                             a.doorNo,
@@ -239,10 +243,8 @@ export default function CustomerAccount() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="text-sm text-gray-600">No addresses yet.</p>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="bg-white rounded-2xl border border-rose-100 p-5">
@@ -374,11 +376,9 @@ export default function CustomerAccount() {
         </div>
       </div>
 
-      <div className="mt-6 bg-white rounded-2xl border border-rose-100 p-5">
-        <h2 className="font-display text-xl font-bold text-rose-800 mb-4">Order history</h2>
-        {orders.length === 0 ? (
-          <p className="text-sm text-gray-600">No orders found for your phone yet.</p>
-        ) : (
+      {orders.length > 0 ? (
+        <div className="mt-6 bg-white rounded-2xl border border-rose-100 p-4 md:p-5">
+          <h2 className="font-display text-xl font-bold text-rose-800 mb-4">Order history</h2>
           <div className="space-y-3">
             {orders.map((o) => (
               <div key={o._id} className="border border-rose-100 rounded-xl p-4 bg-cream-50">
@@ -387,13 +387,17 @@ export default function CustomerAccount() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-rose-600">Order ID</p>
                     <p className="font-mono text-lg font-bold text-gray-900">{o.orderId}</p>
                     <p className="text-sm text-gray-600 mt-1">
-                      {o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                      {o.createdAt
+                        ? new Date(o.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                        : '—'}
                     </p>
                     <p className="text-sm font-semibold text-gray-800 mt-1">
                       Total: ₹{Number(o.total || 0).toFixed(2)}
                     </p>
                   </div>
-                  <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-medium ${statusBadgeClass(o.status)}`}>
+                  <span
+                    className={`inline-block px-2.5 py-1 rounded-lg text-xs font-medium ${statusBadgeClass(o.status)}`}
+                  >
                     {statusLabel(o.status)}
                   </span>
                 </div>
@@ -433,15 +437,17 @@ export default function CustomerAccount() {
                           Tracking: <span className="font-mono">{o.trackingNumber}</span>
                         </span>
                       ) : null}
-                      {o.shippingCarrier ? <span className="text-teal-800">Shipped by: {o.shippingCarrier}</span> : null}
+                      {o.shippingCarrier ? (
+                        <span className="text-teal-800">Shipped by: {o.shippingCarrier}</span>
+                      ) : null}
                     </span>
                   ) : null}
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       {viewOrderDetail && viewOrderDetail.loading && (
         <div

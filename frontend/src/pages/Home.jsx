@@ -30,6 +30,7 @@ export default function Home() {
 
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const bannerItemRefs = useRef([]);
+  const bannerScrollerRef = useRef(null);
 
   const connecting = status === 'loading' && allProducts.length === 0;
 
@@ -40,12 +41,15 @@ export default function Home() {
       setCurrentBannerIndex((prev) => {
         const next = (prev + 1) % banners.length;
         const el = bannerItemRefs.current[next];
-        if (el && typeof el.scrollIntoView === 'function') {
-          el.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+        const scroller = bannerScrollerRef.current;
+        // Scroll only inside the banner strip (avoid moving page scroll Y).
+        if (el && scroller && typeof scroller.scrollTo === 'function') {
+          const left = el.offsetLeft - scroller.offsetLeft;
+          scroller.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
         }
         return next;
       });
-    }, 2000); // Change banner every 2 seconds
+    }, 3000); // Change banner every 2 seconds
     return () => clearInterval(interval);
   }, [banners.length]);
 
@@ -87,7 +91,7 @@ export default function Home() {
       {/* Flipkart-style top strip (always visible) */}
       <section className="bg-white border-b border-rose-100">
         <div className="max-w-6xl mx-auto px-4 pt-4">
-          <div className="flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 lg:mx-0 lg:px-0 scrollbar-thin">
+          <div className="flex gap-4 overflow-x-auto pb-3 -mx-4 px-4 lg:mx-0 lg:px-0 scrollbar-none">
             {categories.slice(0, 8).map((cat) => (
               <Link
                 key={cat.id}
@@ -120,7 +124,10 @@ export default function Home() {
 
         {banners.length > 0 && (
           <div className="max-w-6xl mx-auto px-4 pb-6">
-            <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 scrollbar-thin">
+            <div
+              ref={bannerScrollerRef}
+              className="flex gap-8 sm:gap-8 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 scrollbar-none"
+            >
               {banners.map((banner, index) => (
                 <button
                   key={banner._id}
@@ -129,7 +136,7 @@ export default function Home() {
                   onClick={() => handleBannerClick(banner)}
                   className={`snap-start flex-shrink-0 rounded-2xl overflow-hidden border transition ${
                     index === currentBannerIndex ? 'border-rose-300 shadow-soft' : 'border-rose-100 hover:border-rose-200'
-                  } w-[85%] sm:w-[70%] lg:w-[48%]`}
+                  } w-full sm:w-[70%] lg:w-[48%]`}
                   aria-label={`Open banner ${index + 1}`}
                 >
                   <div className="relative w-full bg-black aspect-[41/20]">

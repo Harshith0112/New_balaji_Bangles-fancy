@@ -35,6 +35,15 @@ html {
   animation: brand-scroll 45s linear infinite;
 }
 
+/* Hide scrollbars (keep scrolling) */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
 @keyframes brand-scroll {
   0% {
     transform: translateX(0);
