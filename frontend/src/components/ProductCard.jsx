@@ -21,11 +21,9 @@ export default function ProductCard({ product }) {
   const priceLow = getLowestVariantTotal(product);
   const priceHigh = getHighestVariantTotal(product);
   const showVariantRange = optionGroups.length > 0 && variantPriceHasRange(product);
-  const showStrikethroughOriginal =
-    product.originalPrice &&
-    (showVariantRange ? product.originalPrice > priceHigh : product.originalPrice > priceLow);
   const discount =
-    showStrikethroughOriginal && product.originalPrice
+    product.originalPrice &&
+    (showVariantRange ? product.originalPrice > priceHigh : product.originalPrice > priceLow)
       ? Math.max(0, Math.round((1 - priceLow / product.originalPrice) * 100))
       : 0;
 
@@ -67,7 +65,7 @@ export default function ProductCard({ product }) {
   };
 
   return (
-    <div className="group bg-white rounded-2xl overflow-hidden shadow-card hover:shadow-soft transition-all duration-300 border border-rose-50">
+    <div className="group bg-white rounded-2xl overflow-hidden shadow-card hover:shadow-soft transition-all duration-300 border border-rose-50 flex flex-col min-h-[296px]">
       <Link to={`/product/${product._id}`} className="block aspect-square relative overflow-hidden bg-cream-100">
         <img
           src={imageUrl}
@@ -85,14 +83,14 @@ export default function ProductCard({ product }) {
           </span>
         )}
       </Link>
-      <div className="p-4">
+      <div className="p-4 flex flex-col flex-1">
         <Link to={`/product/${product._id}`}>
-          <h3 className="font-display font-semibold text-gray-800 line-clamp-2 group-hover:text-rose-600 transition">
+          <h3 className="font-display font-semibold text-gray-800 line-clamp-2 min-h-[44px] group-hover:text-rose-600 transition">
             {product.name}
           </h3>
         </Link>
-        <div className="mt-2 flex items-center gap-2 flex-wrap">
-          <span className="text-rose-600 font-bold">
+        <div className="mt-2 flex items-center gap-2 min-h-[24px]">
+          <span className="text-rose-600 font-bold text-lg whitespace-nowrap min-w-0">
             {showVariantRange ? (
               <>
                 ₹{formatInrAmount(priceLow)} – ₹{formatInrAmount(priceHigh)}
@@ -101,22 +99,17 @@ export default function ProductCard({ product }) {
               <>₹{formatInrAmount(priceLow)}</>
             )}
           </span>
-          {showStrikethroughOriginal && (
-            <span className="text-gray-400 text-sm line-through">
-              ₹{formatInrAmount(product.originalPrice)}
-            </span>
-          )}
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-auto flex gap-2 min-h-[44px]">
           {needsViewForOptions ? (
             <Link
               to={`/product/${product._id}`}
-              className="flex-1 text-center bg-rose-500 text-white py-2.5 rounded-xl font-medium hover:bg-rose-600 transition"
+              className="flex-1 text-center bg-rose-500 text-white py-2.5 rounded-xl font-medium hover:bg-rose-600 transition whitespace-nowrap h-[44px]"
             >
               View
             </Link>
           ) : cartQuantity > 0 ? (
-            <div className="flex-1 flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl p-1">
+            <div className="flex-1 flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl p-1 h-[44px]">
               <button
                 type="button"
                 onClick={handleDecreaseQty}
@@ -125,7 +118,7 @@ export default function ProductCard({ product }) {
               >
                 −
               </button>
-              <span className="flex-1 text-center font-semibold text-rose-700">{cartQuantity}</span>
+              <span className="flex-1 text-center font-semibold text-rose-700 whitespace-nowrap">{cartQuantity}</span>
               <button
                 type="button"
                 onClick={handleIncreaseQty}
@@ -140,7 +133,7 @@ export default function ProductCard({ product }) {
               type="button"
               onClick={handleAddToCart}
               disabled={!product.inStock}
-              className="flex-1 bg-rose-500 text-white py-2.5 rounded-xl font-medium hover:bg-rose-600 transition disabled:opacity-50 disabled:pointer-events-none"
+              className="flex-1 bg-rose-500 text-white py-2.5 rounded-xl font-medium hover:bg-rose-600 transition disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap truncate h-[44px]"
             >
               Add to Cart
             </button>

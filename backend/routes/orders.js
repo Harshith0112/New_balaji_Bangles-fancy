@@ -337,37 +337,41 @@ router.post('/parse', protect, async (req, res) => {
   }
 });
 
-// Generate next order ID (e.g. NB00012026)
+// Generate next order ID (e.g. NB20260001)
 async function getNextOrderId() {
   const year = new Date().getFullYear();
-  // Format: NB + 4-digit sequential count (zero padded) + 4-digit year
-  // Example: NB00022026
-  const newYearPattern = new RegExp(`^NB(\\d{4})${year}$`);
+
+  // New format: NB{year}{orderNumber}
+  // Example: NB20260001 (year=2026, orderNumber=0001)
+  const newPrefix = `NB${year}`;
+  const newYearPattern = new RegExp(`^${newPrefix}(\\d{4})$`);
   const newLast = await Order.findOne({ orderId: newYearPattern }).sort({ orderId: -1 }).lean();
 
-  // Backward compatibility: earlier format was `NB-${year}-0001`
-  const oldPrefix = `NB-${year}-`;
-  const oldYearPattern = new RegExp(`^${oldPrefix}(\\d{4})$`);
+  // Old format (already existing in DB): NB{orderNumber}{year}
+  // Example: NB00012026 (orderNumber=0001, year=2026)
+  const oldYearPattern = new RegExp(`^NB(\\d{4})${year}$`);
   const oldLast = await Order.findOne({ orderId: oldYearPattern }).sort({ orderId: -1 }).lean();
 
-  const parseCountFromOrderId = (orderId) => {
+  const parseCountFromNew = (orderId) => {
     const str = String(orderId || '');
-    if (!str) return 0;
-    if (str.startsWith('NB') && str.endsWith(String(year)) && str.length >= 6) {
-      const countStr = str.slice(2, 6); // NB + 4 digits
-      return parseInt(countStr, 10) || 0;
-    }
-    if (str.startsWith(oldPrefix)) {
-      const countStr = str.replace(oldPrefix, '');
-      return parseInt(countStr, 10) || 0;
-    }
-    return 0;
+    if (!str.startsWith(newPrefix)) return 0;
+    const countStr = str.slice(newPrefix.length);
+    const n = parseInt(countStr, 10);
+    return Number.isFinite(n) ? n : 0;
   };
 
-  const lastCount = Math.max(parseCountFromOrderId(newLast?.orderId), parseCountFromOrderId(oldLast?.orderId));
+  const parseCountFromOld = (orderId) => {
+    const str = String(orderId || '');
+    const m = str.match(/^NB(\d{4})/);
+    if (!m) return 0;
+    const n = parseInt(m[1], 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const lastCount = Math.max(parseCountFromNew(newLast?.orderId), parseCountFromOld(oldLast?.orderId));
   const next = lastCount > 0 ? lastCount + 1 : 1;
 
-  return `NB${String(next).padStart(4, '0')}${year}`;
+  return `${newPrefix}${String(next).padStart(4, '0')}`;
 }
 
 // Public: create an order from online ecommerce flow (no login)

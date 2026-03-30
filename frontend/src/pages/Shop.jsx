@@ -186,7 +186,7 @@ export default function Shop() {
 
       <div className="flex-1">
         {loading ? (
-          <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="bg-cream-100 rounded-2xl h-48 sm:h-80 animate-pulse" />
             ))}
@@ -194,7 +194,7 @@ export default function Shop() {
         ) : products.length === 0 ? (
           <p className="text-gray-500 text-center py-12">No products found. Try different filters.</p>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
             {products.map((p) => (
               <ProductCard key={p._id} product={p} />
             ))}

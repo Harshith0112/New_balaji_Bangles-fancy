@@ -71,7 +71,7 @@ export default function TrackOrder() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-10 md:py-14">
       <h1 className="font-display text-3xl font-bold text-rose-800 text-center mb-2">Track your order</h1>
-      {/* Order lookup is driven by URL query param: ?order=NB00012026 */}
+      {/* Order lookup is driven by URL query param: ?order=NB20260001 */}
 
       {error && (
         <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-sm">
