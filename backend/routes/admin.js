@@ -36,6 +36,37 @@ router.get('/me', protect, (req, res) => {
   res.json({ admin: req.admin });
 });
 
+// Change admin password (protected)
+router.post(
+  '/change-password',
+  [
+    protect,
+    body('oldPassword').notEmpty().withMessage('Old password is required'),
+    body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+      const { oldPassword, newPassword } = req.body;
+      const admin = await Admin.findById(req.admin.id);
+      if (!admin) return res.status(404).json({ message: 'Admin not found' });
+
+      const isOldPasswordValid = await admin.comparePassword(oldPassword);
+      if (!isOldPasswordValid) {
+        return res.status(400).json({ message: 'Old password is incorrect' });
+      }
+
+      admin.password = newPassword;
+      await admin.save();
+      return res.json({ message: 'Password changed successfully' });
+    } catch (err) {
+      return res.status(500).json({ message: err.message || 'Failed to change password' });
+    }
+  }
+);
+
 // Register first admin (only if no admin exists - for initial setup)
 router.post(
   '/register',

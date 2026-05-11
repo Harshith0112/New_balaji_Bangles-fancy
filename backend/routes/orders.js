@@ -3,8 +3,16 @@ import Order from '../models/Order.js';
 import DraftOrder from '../models/DraftOrder.js';
 import Product from '../models/Product.js';
 import Coupon from '../models/Coupon.js';
+import Customer from '../models/Customer.js';
 import { protect } from '../middleware/auth.js';
 import { computeCouponDiscountAmount, normalizeCouponCode } from '../utils/couponHelpers.js';
+import { sendEmail } from '../utils/mailer.js';
+import {
+  renderOrderConfirmationHtml,
+  orderPlacedEmail,
+  orderItemsUpdatedEmail,
+  orderStatusEmail,
+} from '../utils/emailTemplates.js';
 
 const router = express.Router();
 
@@ -377,13 +385,34 @@ async function getNextOrderId() {
 // Public: create an order from online ecommerce flow (no login)
 router.post('/online', async (req, res) => {
   try {
-    const { customerName, customerPhone, items, total, delivery, couponCode: couponCodeRaw } = req.body || {};
+    const {
+      customerName,
+      customerPhone,
+      customerEmail: customerEmailRaw,
+      items,
+      total,
+      delivery,
+      couponCode: couponCodeRaw,
+    } = req.body || {};
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Items are required' });
     }
     const phoneDigits = String(customerPhone || '').replace(/\D/g, '');
     if (!phoneDigits || phoneDigits.length < 10) {
       return res.status(400).json({ message: 'Valid customer phone is required' });
+    }
+
+    // Capture an email for transactional updates: prefer the email submitted with
+    // the order; otherwise fall back to whatever's on the registered customer
+    // record matching this phone (so logged-in customers always get emails).
+    const submittedEmail = String(customerEmailRaw || '').trim().toLowerCase();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submittedEmail);
+    let resolvedEmail = isValidEmail ? submittedEmail : '';
+    if (!resolvedEmail) {
+      try {
+        const matched = await Customer.findOne({ phone: phoneDigits }).lean();
+        if (matched?.email) resolvedEmail = String(matched.email).toLowerCase();
+      } catch (_) {}
     }
 
     const deliveryDoc =
@@ -489,6 +518,7 @@ router.post('/online', async (req, res) => {
       rawMessage: '',
       customerName: String(customerName || '').trim(),
       customerPhone: phoneDigits,
+      customerEmail: resolvedEmail,
       items: orderItems,
       total: netTotal,
       couponCode: appliedCouponCode,
@@ -503,6 +533,14 @@ router.post('/online', async (req, res) => {
 
     if (appliedCouponCode && couponDiscount > 0) {
       await Coupon.updateOne({ code: appliedCouponCode }, { $inc: { usedCount: 1 } });
+    }
+
+    // Fire-and-forget "thanks for your order" email — never block placement on mail.
+    if (resolvedEmail) {
+      const { subject, html, text } = orderPlacedEmail(order.toObject());
+      sendEmail({ to: resolvedEmail, subject, html, text }).catch((e) =>
+        console.error('[orders] order-placed email failed:', e?.message || e)
+      );
     }
 
     res.status(201).json({
@@ -567,262 +605,21 @@ router.post('/', protect, async (req, res) => {
 });
 
 function formatBill(order) {
-  const itemsSubtotal = (order.items || []).reduce((s, i) => s + (Number(i.lineTotal) || 0), 0);
-  const couponDiscount = Number(order.couponDiscount) || 0;
-  const couponCode = order.couponCode || '';
-  const netItems = Number(order.total) || 0;
-  const shipping = Number(order.shippingCharge) || 0;
-  const grandTotal = netItems + shipping;
-  const customerName = order.customerName || 'Customer';
-  const customerPhone = order.customerPhone || '';
-  const created = new Date(order.createdAt);
-  const dateStr = created.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const timeStr = created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-  const paymentMode = (order.paymentStatus === 'paid' ? 'Paid' : 'Pending');
-  const storeAddress = process.env.STORE_ADDRESS || 'Store Address, City, PIN';
-  const storePhone = process.env.STORE_PHONE || 'Phone: +91-XXXXXXXXXX';
-  const rows = (order.items || []).map((i, idx) => `
-    <tr>
-      <td>${idx + 1}</td>
-      <td>${billItemProductCellHtml(i)}</td>
-      <td class="num">${i.quantity}</td>
-      <td>₹ ${Number(i.price).toFixed(2)}</td>
-      <td>₹ ${Number(i.lineTotal).toFixed(2)}</td>
-    </tr>`).join('');
-  const logoUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL.replace(/\/$/, '')}/logo.png` : '/logo.png';
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Invoice - ${escapeHtml(order.orderId)}</title>
-  <style>
-    *{box-sizing:border-box;}
-    body{font-family:'Segoe UI',Tahoma,Geneva,system-ui,sans-serif;font-size:14px;color:#1f2937;max-width:520px;margin:0 auto;padding:28px 24px;line-height:1.45;background:#fff;}
-    .bill-header{display:flex;align-items:center;gap:16px;padding-bottom:20px;}
-    .bill-logo{width:80px;height:80px;object-fit:contain;flex-shrink:0;border-radius:50%;}
-    .bill-header-text{flex:1;}
-    .store-name{font-size:18px;font-weight:700;color:#1f2937;letter-spacing:0.04em;text-transform:uppercase;}
-    .store-tagline{font-size:11px;color:#9f1239;margin-top:4px;letter-spacing:0.02em;}
-    .store-info{font-size:11px;color:#6b7280;margin-top:6px;line-height:1.5;}
-    .bill-hr{border:0;height:0;border-top:2px solid #9f1239;margin:16px 0 20px;opacity:0.9;}
-    .invoice-title{font-size:20px;font-weight:700;text-align:center;margin:0 0 20px;color:#1f2937;letter-spacing:0.06em;}
-    .invoice-meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;padding:14px 16px;background:#fafafa;border-radius:8px;border:1px solid #f3f4f6;font-size:13px;}
-    .invoice-meta .left,.invoice-meta .right{display:flex;flex-direction:column;gap:6px;}
-    .invoice-meta strong{color:#374151;}
-    .customer-section{margin-bottom:20px;padding:14px 16px;background:#fafafa;border-radius:8px;border:1px solid #f3f4f6;}
-    .customer-heading{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;color:#9f1239;}
-    .customer-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0;}
-    .customer-row .l{color:#6b7280;} .customer-row .r{font-weight:600;color:#1f2937;}
-    .bill-table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px;border:1px solid #000;}
-    .bill-table th{text-align:left;padding:12px 10px;background:#9f1239;color:#fff;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;border:1px solid #000;}
-    .bill-table td{padding:10px;border:1px solid #000;}
-    .bill-table tbody tr:nth-child(even){background:#fafafa;}
-    .bill-table th:last-child,.bill-table td:last-child{text-align:right;}
-    .bill-table .num{text-align:center;}
-    .bill-totals{text-align:right;font-size:13px;margin-top:4px;max-width:240px;margin-left:auto;}
-    .bill-totals .row{display:flex;justify-content:flex-end;gap:32px;padding:6px 0;}
-    .bill-totals .label{color:#6b7280;min-width:100px;}
-    .bill-totals .total-row{border-top:2px solid #9f1239;margin-top:8px;padding-top:12px;font-weight:700;font-size:16px;color:#9f1239;}
-    .bill-footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#6b7280;}
-    .bill-footer .line1{margin-bottom:4px;}
-    .bill-footer .thanks{font-weight:600;color:#374151;margin-top:6px;}
-    @media print{body{padding:16px;max-width:100%;} .bill-logo{max-height:80px;}}
-  </style>
-</head>
-<body>
-  <div class="bill-header">
-    <img src="${escapeHtml(logoUrl)}" alt="New Balaji Bangles and Fancy" class="bill-logo"/>
-    <div class="bill-header-text">
-      <div class="store-name">New Balaji Bangles and Fancy</div>
-      <div class="store-tagline">Cosmetics • Jewels • Accessories</div>
-      <div class="store-info">${escapeHtml(storeAddress)}<br/>${escapeHtml(storePhone)}</div>
-    </div>
-  </div>
-  <hr class="bill-hr"/>
-  <h1 class="invoice-title">Invoice</h1>
-  <div class="invoice-meta">
-    <div class="left">
-      <div><strong>Invoice No:</strong> ${escapeHtml(order.orderId)}</div>
-      <div><strong>Time:</strong> ${timeStr}</div>
-    </div>
-    <div class="right">
-      <div><strong>Date:</strong> ${dateStr}</div>
-      <div><strong>Payment Mode:</strong> ${paymentMode}</div>
-    </div>
-  </div>
-  <div class="customer-section">
-    <div class="customer-heading">Customer Details</div>
-    <div class="customer-row"><span class="l">Name</span><span class="r">${escapeHtml(customerName)}</span></div>
-    <div class="customer-row"><span class="l">Phone</span><span class="r">${escapeHtml(customerPhone) || '—'}</span></div>
-  </div>
-  ${deliveryBlockHtml(order)}
-  <table class="bill-table">
-    <thead>
-      <tr><th>S.No</th><th>Product Name</th><th class="num">Qty</th><th>Rate</th><th>Amount</th></tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <div class="bill-totals">
-    <div class="row"><span class="label">Items subtotal</span><span>₹ ${itemsSubtotal.toFixed(2)}</span></div>
-    ${couponDiscount > 0 ? `<div class="row"><span class="label">Coupon discount${couponCode ? ` (${escapeHtml(couponCode)})` : ''}</span><span>− ₹ ${couponDiscount.toFixed(2)}</span></div>` : ''}
-    ${shipping > 0 ? `<div class="row"><span class="label">Shipping</span><span>₹ ${shipping.toFixed(2)}</span></div>` : ''}
-    <div class="row total-row"><span class="label">Total Amount</span><span>₹ ${grandTotal.toFixed(2)}</span></div>
-  </div>
-  <div class="bill-footer">
-    <div class="line1">This is a computer generated invoice</div>
-    <div class="thanks">Thank you for your business!</div>
-  </div>
-</body>
-</html>`;
-}
-function escapeHtml(s) {
-  if (s == null) return '';
-  const str = String(s);
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-/** Second line under product name in invoices (variant / options) */
-function formatSelectedOptionsBillHtml(selectedOptions) {
-  if (!selectedOptions || typeof selectedOptions !== 'object') return '';
-  const parts = Object.entries(selectedOptions).filter(
-    ([k, v]) => k != null && v != null && String(v).trim() !== ''
-  );
-  if (!parts.length) return '';
-  const inner = parts
-    .map(([k, v]) => `${escapeHtml(String(k))}: ${escapeHtml(String(v))}`)
-    .join('<br/>');
-  return `<div style="font-size:11px;color:#4b5563;font-weight:500;margin-top:4px;line-height:1.35;">${inner}</div>`;
-}
-
-function billItemProductCellHtml(i) {
-  const name = escapeHtml(i.name);
-  const nbf = i.nbfCode ? ` (${escapeHtml(i.nbfCode)})` : '';
-  const opts = formatSelectedOptionsBillHtml(i.selectedOptions);
-  return `${name}${nbf}${opts}`;
-}
-
-function deliveryBlockHtml(order) {
-  const d = order.delivery;
-  if (!d || (!d.address && !d.pincode && !d.state)) return '';
-  return `
-  <div class="customer-section">
-    <div class="customer-heading">Delivery address</div>
-    ${d.address ? `<div class="customer-row" style="align-items:flex-start;"><span class="l">Address</span><span class="r" style="white-space:pre-wrap;text-align:right;max-width:65%;">${escapeHtml(d.address)}</span></div>` : ''}
-    ${d.pincode ? `<div class="customer-row"><span class="l">Pincode</span><span class="r">${escapeHtml(d.pincode)}</span></div>` : ''}
-    ${d.state ? `<div class="customer-row"><span class="l">State</span><span class="r">${escapeHtml(d.state)}</span></div>` : ''}
-  </div>`;
+  return renderOrderConfirmationHtml(order, {
+    title: 'Invoice',
+    metaLeftLabel: 'Invoice No',
+    footerNote: 'This is a computer generated invoice',
+    thanksLine: 'Thank you for your business!',
+  });
 }
 
 function formatOrderConfirmation(order) {
-  const itemsSubtotal = (order.items || []).reduce((s, i) => s + (Number(i.lineTotal) || 0), 0);
-  const couponDiscount = Number(order.couponDiscount) || 0;
-  const couponCode = order.couponCode || '';
-  const netItems = Number(order.total) || 0;
-  const shipping = Number(order.shippingCharge) || 0;
-  const grandTotal = netItems + shipping;
-  const customerName = order.customerName || 'Customer';
-  const customerPhone = order.customerPhone || '';
-  const created = new Date(order.createdAt);
-  const dateStr = created.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const timeStr = created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-  const paymentMode = (order.paymentStatus === 'paid' ? 'Paid' : 'Pending');
-  const storeAddress = process.env.STORE_ADDRESS || 'Store Address, City, PIN';
-  const storePhone = process.env.STORE_PHONE || 'Phone: +91-XXXXXXXXXX';
-  const rows = (order.items || []).map((i, idx) => `
-    <tr>
-      <td>${idx + 1}</td>
-      <td>${billItemProductCellHtml(i)}</td>
-      <td class="num">${i.quantity}</td>
-      <td>₹ ${Number(i.price).toFixed(2)}</td>
-      <td>₹ ${Number(i.lineTotal).toFixed(2)}</td>
-    </tr>`).join('');
-  const logoUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL.replace(/\/$/, '')}/logo.png` : '/logo.png';
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Order Confirmation - ${escapeHtml(order.orderId)}</title>
-  <style>
-    *{box-sizing:border-box;}
-    body{font-family:'Segoe UI',Tahoma,Geneva,system-ui,sans-serif;font-size:14px;color:#1f2937;max-width:520px;margin:0 auto;padding:28px 24px;line-height:1.45;background:#fff;}
-    .bill-header{display:flex;align-items:center;gap:16px;padding-bottom:20px;}
-    .bill-logo{width:80px;height:80px;object-fit:contain;flex-shrink:0;border-radius:50%;}
-    .bill-header-text{flex:1;}
-    .store-name{font-size:18px;font-weight:700;color:#1f2937;letter-spacing:0.04em;text-transform:uppercase;}
-    .store-tagline{font-size:11px;color:#9f1239;margin-top:4px;letter-spacing:0.02em;}
-    .store-info{font-size:11px;color:#6b7280;margin-top:6px;line-height:1.5;}
-    .bill-hr{border:0;height:0;border-top:2px solid #9f1239;margin:16px 0 20px;opacity:0.9;}
-    .invoice-title{font-size:20px;font-weight:700;text-align:center;margin:0 0 20px;color:#1f2937;letter-spacing:0.06em;}
-    .invoice-meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;padding:14px 16px;background:#fafafa;border-radius:8px;border:1px solid #f3f4f6;font-size:13px;}
-    .invoice-meta .left,.invoice-meta .right{display:flex;flex-direction:column;gap:6px;}
-    .invoice-meta strong{color:#374151;}
-    .customer-section{margin-bottom:20px;padding:14px 16px;background:#fafafa;border-radius:8px;border:1px solid #f3f4f6;}
-    .customer-heading{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;color:#9f1239;}
-    .customer-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0;}
-    .customer-row .l{color:#6b7280;} .customer-row .r{font-weight:600;color:#1f2937;}
-    .bill-table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px;border:1px solid #000;}
-    .bill-table th{text-align:left;padding:12px 10px;background:#9f1239;color:#fff;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.03em;border:1px solid #000;}
-    .bill-table td{padding:10px;border:1px solid #000;}
-    .bill-table tbody tr:nth-child(even){background:#fafafa;}
-    .bill-table th:last-child,.bill-table td:last-child{text-align:right;}
-    .bill-table .num{text-align:center;}
-    .bill-totals{text-align:right;font-size:13px;margin-top:4px;max-width:240px;margin-left:auto;}
-    .bill-totals .row{display:flex;justify-content:flex-end;gap:32px;padding:6px 0;}
-    .bill-totals .label{color:#6b7280;min-width:100px;}
-    .bill-totals .total-row{border-top:2px solid #9f1239;margin-top:8px;padding-top:12px;font-weight:700;font-size:16px;color:#9f1239;}
-    .bill-footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#6b7280;}
-    .bill-footer .line1{margin-bottom:4px;}
-    .bill-footer .thanks{font-weight:600;color:#374151;margin-top:6px;}
-    @media print{body{padding:16px;max-width:100%;} .bill-logo{max-height:80px;}}
-  </style>
-</head>
-<body>
-  <div class="bill-header">
-    <img src="${escapeHtml(logoUrl)}" alt="New Balaji Bangles and Fancy" class="bill-logo"/>
-    <div class="bill-header-text">
-      <div class="store-name">New Balaji Bangles and Fancy</div>
-      <div class="store-tagline">Cosmetics • Jewels • Accessories</div>
-      <div class="store-info">${escapeHtml(storeAddress)}<br/>${escapeHtml(storePhone)}</div>
-    </div>
-  </div>
-  <hr class="bill-hr"/>
-  <h1 class="invoice-title">Order Confirmation</h1>
-  <div class="invoice-meta">
-    <div class="left">
-      <div><strong>Order No:</strong> ${escapeHtml(order.orderId)}</div>
-      <div><strong>Time:</strong> ${timeStr}</div>
-    </div>
-    <div class="right">
-      <div><strong>Date:</strong> ${dateStr}</div>
-      <div><strong>Payment Mode:</strong> ${paymentMode}</div>
-    </div>
-  </div>
-  <div class="customer-section">
-    <div class="customer-heading">Customer Details</div>
-    <div class="customer-row"><span class="l">Name</span><span class="r">${escapeHtml(customerName)}</span></div>
-    <div class="customer-row"><span class="l">Phone</span><span class="r">${escapeHtml(customerPhone) || '—'}</span></div>
-  </div>
-  ${deliveryBlockHtml(order)}
-  <table class="bill-table">
-    <thead>
-      <tr><th>S.No</th><th>Product Name</th><th class="num">Qty</th><th>Rate</th><th>Amount</th></tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <div class="bill-totals">
-    <div class="row"><span class="label">Items subtotal</span><span>₹ ${itemsSubtotal.toFixed(2)}</span></div>
-    ${couponDiscount > 0 ? `<div class="row"><span class="label">Coupon discount${couponCode ? ` (${escapeHtml(couponCode)})` : ''}</span><span>− ₹ ${couponDiscount.toFixed(2)}</span></div>` : ''}
-    ${shipping > 0 ? `<div class="row"><span class="label">Shipping</span><span>₹ ${shipping.toFixed(2)}</span></div>` : ''}
-    <div class="row total-row"><span class="label">Total Amount</span><span>₹ ${grandTotal.toFixed(2)}</span></div>
-  </div>
-  <div class="bill-footer">
-    <div class="line1">This is a computer generated order confirmation</div>
-    <div class="thanks">Thank you for your order!</div>
-  </div>
-</body>
-</html>`;
+  return renderOrderConfirmationHtml(order, {
+    title: 'Order Confirmation',
+    metaLeftLabel: 'Order No',
+    footerNote: 'This is a computer generated order confirmation',
+    thanksLine: 'Thank you for your order!',
+  });
 }
 
 // Admin: list orders
@@ -1043,11 +840,14 @@ router.put('/:id', protect, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
+    const previousStatus = order.status;
+    let itemsUpdated = false;
     const {
       status,
       paymentStatus,
       trackingNumber,
       shippingCarrier,
+      shippingCharge,
       items: newItems,
       packedItemIndices,
       customerName,
@@ -1056,8 +856,16 @@ router.put('/:id', protect, async (req, res) => {
 
     if (customerName !== undefined) order.customerName = String(customerName).trim();
     if (customerPhone !== undefined) order.customerPhone = String(customerPhone).trim();
+    if (shippingCharge !== undefined) {
+      const parsedShipping = Number(shippingCharge);
+      if (!Number.isFinite(parsedShipping) || parsedShipping < 0) {
+        return res.status(400).json({ message: 'Shipping charge must be a non-negative number' });
+      }
+      order.shippingCharge = Math.round(parsedShipping * 100) / 100;
+    }
 
     if (Array.isArray(newItems) && newItems.length > 0) {
+      itemsUpdated = true;
       const orderItems = newItems.map((i) => ({
         productId: i.productId || undefined,
         name: i.name || '',
@@ -1072,7 +880,10 @@ router.put('/:id', protect, async (req, res) => {
       }));
       order.items = orderItems;
       const subtotal = order.items.reduce((sum, i) => sum + i.lineTotal, 0);
-      order.total = subtotal;
+      const existingDiscount = Math.max(0, Number(order.couponDiscount) || 0);
+      const boundedDiscount = Math.min(existingDiscount, subtotal);
+      order.couponDiscount = boundedDiscount;
+      order.total = Math.round((subtotal - boundedDiscount) * 100) / 100;
     }
 
     if (status && ['pending', 'confirmed', 'packed', 'shipped', 'cancelled', 'returned'].includes(status)) {
@@ -1107,6 +918,32 @@ router.put('/:id', protect, async (req, res) => {
       order.shippingCarrier = String(shippingCarrier).trim();
     }
     await order.save();
+
+    // When admin edits order items, notify customer with updated summary.
+    if (itemsUpdated && order.customerEmail) {
+      const { subject, html, text } = orderItemsUpdatedEmail(order.toObject());
+      sendEmail({ to: order.customerEmail, subject, html, text }).catch((e) =>
+        console.error('[orders] items-updated email failed:', e?.message || e)
+      );
+    }
+
+    // If the status transitioned to one we email about, fire-and-forget the email.
+    const STATUSES_WITH_EMAIL = ['confirmed', 'packed', 'shipped', 'cancelled'];
+    const statusChanged = previousStatus !== order.status;
+    if (
+      statusChanged &&
+      STATUSES_WITH_EMAIL.includes(order.status) &&
+      order.customerEmail
+    ) {
+      const built = orderStatusEmail(order.toObject(), order.status);
+      if (built) {
+        const { subject, html, text } = built;
+        sendEmail({ to: order.customerEmail, subject, html, text }).catch((e) =>
+          console.error(`[orders] status (${order.status}) email failed:`, e?.message || e)
+        );
+      }
+    }
+
     res.json(order.toObject());
   } catch (err) {
     res.status(500).json({ message: err.message });

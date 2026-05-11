@@ -123,10 +123,10 @@ export default function Home() {
         </div>
 
         {banners.length > 0 && (
-          <div className="max-w-6xl mx-auto px-4 pb-6">
+          <div className="max-w-6xl mx-auto px-0 sm:px-4 pb-4 sm:pb-6">
             <div
               ref={bannerScrollerRef}
-              className="flex gap-8 sm:gap-8 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 scrollbar-none"
+              className="flex gap-0 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-0 sm:pb-2 mx-0 px-0 sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0 scrollbar-none"
             >
               {banners.map((banner, index) => (
                 <button
@@ -134,9 +134,9 @@ export default function Home() {
                   type="button"
                   ref={(el) => { bannerItemRefs.current[index] = el; }}
                   onClick={() => handleBannerClick(banner)}
-                  className={`snap-start flex-shrink-0 rounded-2xl overflow-hidden border transition ${
+                  className={`snap-start flex-shrink-0 overflow-hidden border transition ${
                     index === currentBannerIndex ? 'border-rose-300 shadow-soft' : 'border-rose-100 hover:border-rose-200'
-                  } w-full sm:w-[70%] lg:w-[48%]`}
+                  } w-full rounded-none sm:rounded-2xl`}
                   aria-label={`Open banner ${index + 1}`}
                 >
                   <div className="relative w-full bg-black aspect-[41/20]">
@@ -146,10 +146,6 @@ export default function Home() {
                       className="w-full h-full object-cover"
                       loading="lazy"
                       decoding="async"
-                    />
-                    <div
-                      className="absolute inset-0 opacity-20 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%239C92AC\' fill-opacity=\'0.2\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] pointer-events-none"
-                      aria-hidden="true"
                     />
                   </div>
                 </button>
@@ -161,22 +157,26 @@ export default function Home() {
 
       {/* Fallback hero when no banners */}
       {banners.length > 0 ? null : (
-        <section className="relative bg-gradient-to-br from-rose-100 via-cream-100 to-lavender-100 py-20 sm:py-28 overflow-hidden">
-          <div className="absolute inset-0 opacity-30 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%239C92AC\' fill-opacity=\'0.2\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')]" />
-          <div className="max-w-6xl mx-auto px-4 relative z-10 text-center">
-            <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-rose-800 mb-4">
-              NEW BALAJI BANGLES & FANCY
-            </h1>
-            <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-              Bangles, Jewellery, Cosmetics & Fashion Accessories.
-            </p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <Link
-                to="/shop"
-                className="inline-flex items-center gap-2 bg-rose-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-rose-600 transition shadow-soft"
-              >
-                Shop Now
-              </Link>
+        <section className="bg-white border-b border-rose-100">
+          <div className="w-full">
+            <div className="relative w-full overflow-hidden bg-gradient-to-br from-rose-100 via-cream-100 to-lavender-100">
+              <div className="absolute inset-0 opacity-30 bg-[url('data:image/svg+xml,%3Csvg width=%2760%27 height=%2760%27 viewBox=%270 0 60 60%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cg fill=%27none%27 fill-rule=%27evenodd%27%3E%3Cg fill=%27%239C92AC%27 fill-opacity=%270.2%27%3E%3Cpath d=%27M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%27/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')]" />
+              <div className="relative h-[320px] sm:h-[250px] md:h-[405px] flex items-center justify-center px-4 text-center">
+                <div>
+                  <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-rose-800 mb-4">
+                    NEW BALAJI BANGLES &amp; FANCY
+                  </h1>
+                  <p className="text-lg sm:text-xl md:text-lg text-gray-600 mb-8">
+                    Bangles, Jewellery, Cosmetics &amp; Fashion Accessories.
+                  </p>
+                  <Link
+                    to="/shop"
+                    className="inline-flex items-center bg-rose-500 text-white px-6 py-2.5 rounded-xl font-semibold hover:bg-rose-600 transition shadow-soft"
+                  >
+                    Shop Now
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </section>

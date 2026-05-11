@@ -111,6 +111,8 @@ export default function StoreProductSearch({ variant = 'default' }) {
                   src={p.images?.[0] || 'https://placehold.co/40x40/fce7f3/9f1239?text=•'}
                   alt=""
                   className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-cream-100"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="font-medium text-gray-800 line-clamp-1">{p.name}</span>

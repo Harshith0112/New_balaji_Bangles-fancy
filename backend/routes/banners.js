@@ -8,10 +8,42 @@ import { emitSiteDataUpdated } from '../siteSocket.js';
 // Helper function to extract Cloudinary public_id from URL
 function extractPublicId(url) {
   if (!url || typeof url !== 'string') return null;
-  // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{folder}/{public_id}.{format}
-  // or: https://res.cloudinary.com/{cloud_name}/image/upload/{folder}/{public_id}.{format}
-  const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
-  return match ? match[1] : null;
+  try {
+    const { pathname } = new URL(url);
+    const marker = '/upload/';
+    const markerIdx = pathname.indexOf(marker);
+    if (markerIdx === -1) return null;
+
+    const tail = pathname.slice(markerIdx + marker.length);
+    const segments = tail.split('/').filter(Boolean);
+    if (!segments.length) return null;
+
+    const looksLikeTransformSegment = (segment) =>
+      segment.includes(',') || /^(?:[a-z]{1,3}_.+|t_.+)$/.test(segment);
+
+    let start = 0;
+    while (start < segments.length && !/^v\d+$/.test(segments[start]) && looksLikeTransformSegment(segments[start])) {
+      start += 1;
+    }
+
+    if (start < segments.length && /^v\d+$/.test(segments[start])) {
+      start += 1;
+    }
+    if (start >= segments.length) return null;
+
+    const end = segments.length - 1;
+    const last = segments[end].replace(/\.[^.]+$/, '');
+    if (!last) return null;
+    return decodeURIComponent([...segments.slice(start, end), last].join('/'));
+  } catch {
+    return null;
+  }
+}
+
+function sameCloudinaryAsset(urlA, urlB) {
+  const a = extractPublicId(urlA);
+  const b = extractPublicId(urlB);
+  return !!a && !!b && a === b;
 }
 
 // Helper function to delete image from Cloudinary
@@ -36,6 +68,19 @@ const router = express.Router();
 
 // Multer memory storage for Cloudinary
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const MAX_UPLOAD_BYTES = 500 * 1024;
+
+function bannerUploadOptions() {
+  return {
+    folder: 'womens-emporium/banners',
+    format: 'webp',
+    transformation: [
+      // Keep 41:20 ratio recommendation while capping dimensions and compressing.
+      { width: 2050, height: 1000, crop: 'limit' },
+      { quality: 'auto:good' },
+    ],
+  };
+}
 
 // Public: get all active banners
 router.get('/', async (req, res) => {
@@ -70,11 +115,15 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
     if (req.file && process.env.CLOUDINARY_CLOUD_NAME) {
       const result = await new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
-          { folder: 'womens-emporium/banners' },
+          bannerUploadOptions(),
           (err, result) => (err ? reject(err) : resolve(result))
         );
         uploadStream.end(req.file.buffer);
       });
+      if (Number(result?.bytes || 0) > MAX_UPLOAD_BYTES) {
+        if (result?.secure_url) await deleteCloudinaryImage(result.secure_url);
+        return res.status(400).json({ message: 'Please upload a smaller banner image (max 500 KB).' });
+      }
       imageUrl = result.secure_url;
     } else if (req.body.image) {
       imageUrl = req.body.image; // Allow URL input
@@ -117,22 +166,24 @@ router.put('/:id', protect, upload.single('image'), async (req, res) => {
 
     // Handle image upload
     if (req.file && process.env.CLOUDINARY_CLOUD_NAME) {
-      // Delete old image if it exists and is from Cloudinary
-      if (oldImage) {
-        await deleteCloudinaryImage(oldImage);
-      }
-      
       const result = await new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
-          { folder: 'womens-emporium/banners' },
+          bannerUploadOptions(),
           (err, result) => (err ? reject(err) : resolve(result))
         );
         uploadStream.end(req.file.buffer);
       });
+      if (Number(result?.bytes || 0) > MAX_UPLOAD_BYTES) {
+        if (result?.secure_url) await deleteCloudinaryImage(result.secure_url);
+        return res.status(400).json({ message: 'Please upload a smaller banner image (max 500 KB).' });
+      }
       banner.image = result.secure_url;
+      if (oldImage) {
+        await deleteCloudinaryImage(oldImage);
+      }
     } else if (image && !req.file) {
       // If image URL changed and old image was from Cloudinary, delete it
-      if (oldImage && oldImage !== image) {
+      if (oldImage && oldImage !== image && !sameCloudinaryAsset(oldImage, image)) {
         await deleteCloudinaryImage(oldImage);
       }
       banner.image = image; // Update with URL if provided

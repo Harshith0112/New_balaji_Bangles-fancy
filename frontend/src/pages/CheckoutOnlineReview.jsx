@@ -42,6 +42,7 @@ export default function CheckoutOnlineReview() {
 
   const customerName = String(rawCustomer.customerName || '').trim();
   const customerPhone = normalizeDigits(rawCustomer.customerPhone);
+  const customerEmail = String(rawCustomer.customerEmail || '').trim().toLowerCase();
 
   const deliveryValid = !!(
     delivery &&
@@ -79,10 +80,10 @@ export default function CheckoutOnlineReview() {
   }
 
   if (!deliveryValid || !phoneValid) {
-    return <Navigate to="/checkout/delivery" replace state={{ delivery: delivery || {}, customer: { customerName, customerPhone } }} />;
+    return <Navigate to="/checkout/delivery" replace state={{ delivery: delivery || {}, customer: { customerName, customerPhone, customerEmail } }} />;
   }
 
-  const backToAddressState = { delivery, customer: { customerName, customerPhone } };
+  const backToAddressState = { delivery, customer: { customerName, customerPhone, customerEmail } };
 
   const handlePlaceOrder = async () => {
     setError('');
@@ -109,6 +110,7 @@ export default function CheckoutOnlineReview() {
       const payload = {
         customerName,
         customerPhone,
+        ...(customerEmail ? { customerEmail } : {}),
         items: orderItems,
         total: orderTotal,
         delivery,
@@ -170,13 +172,15 @@ export default function CheckoutOnlineReview() {
             {customerName ? <span>{customerName} · </span> : null}
             <span className="font-mono">{customerPhone}</span>
           </p>
+          {customerEmail ? (
+            <p className="text-xs text-gray-500 mt-1 break-all">{customerEmail}</p>
+          ) : null}
         </div>
         <ul className="divide-y divide-rose-50">
           {items.map((item) => (
             <li key={`${item.productId}-${JSON.stringify(item.selectedOptions)}`} className="p-4 flex justify-between items-start">
               <div>
                 <p className="font-semibold text-gray-800">{item.name}</p>
-                {item.nbfCode && <span className="text-xs text-gray-500">NBF: {item.nbfCode}</span>}
                 {item.selectedOptions && Object.keys(item.selectedOptions).length > 0 && (
                   <p className="text-sm text-gray-600">
                     {Object.entries(item.selectedOptions)
@@ -268,6 +272,9 @@ export default function CheckoutOnlineReview() {
           <div className="flex justify-between items-center pt-2 border-t border-rose-100">
             <span className="font-bold text-gray-800">Total</span>
             <span className="text-xl font-bold text-rose-600">₹{orderTotal.toFixed(2)}</span>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Note: Shipping charges may be added at payment/confirmation time if applicable.
           </div>
         </div>
       </div>

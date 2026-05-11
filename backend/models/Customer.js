@@ -20,8 +20,22 @@ const customerSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     phone: { type: String, required: true, unique: true, trim: true },
+    // Required for newly created accounts only — older accounts predate this field
+    // and must still be loadable / saveable (e.g. when adding addresses).
+    email: {
+      type: String,
+      required: function () {
+        return this.isNew;
+      },
+      lowercase: true,
+      trim: true,
+      index: true,
+      default: '',
+    },
     password: { type: String, required: true, minlength: 6 },
     addresses: { type: [customerAddressSchema], default: [] },
+    passwordResetTokenHash: { type: String, default: '' },
+    passwordResetExpires: { type: Date },
   },
   { timestamps: true }
 );

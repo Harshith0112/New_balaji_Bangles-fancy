@@ -8,8 +8,42 @@ import { emitSiteDataUpdated } from '../siteSocket.js';
 
 function extractPublicId(url) {
   if (!url || typeof url !== 'string') return null;
-  const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
-  return match ? match[1] : null;
+  try {
+    const { pathname } = new URL(url);
+    const marker = '/upload/';
+    const markerIdx = pathname.indexOf(marker);
+    if (markerIdx === -1) return null;
+
+    const tail = pathname.slice(markerIdx + marker.length);
+    const segments = tail.split('/').filter(Boolean);
+    if (!segments.length) return null;
+
+    const looksLikeTransformSegment = (segment) =>
+      segment.includes(',') || /^(?:[a-z]{1,3}_.+|t_.+)$/.test(segment);
+
+    let start = 0;
+    while (start < segments.length && !/^v\d+$/.test(segments[start]) && looksLikeTransformSegment(segments[start])) {
+      start += 1;
+    }
+
+    if (start < segments.length && /^v\d+$/.test(segments[start])) {
+      start += 1;
+    }
+    if (start >= segments.length) return null;
+
+    const end = segments.length - 1;
+    const last = segments[end].replace(/\.[^.]+$/, '');
+    if (!last) return null;
+    return decodeURIComponent([...segments.slice(start, end), last].join('/'));
+  } catch {
+    return null;
+  }
+}
+
+function sameCloudinaryAsset(urlA, urlB) {
+  const a = extractPublicId(urlA);
+  const b = extractPublicId(urlB);
+  return !!a && !!b && a === b;
 }
 
 async function deleteCloudinaryImage(url) {
@@ -24,6 +58,18 @@ async function deleteCloudinaryImage(url) {
 }
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+const MAX_UPLOAD_BYTES = 500 * 1024;
+
+function categoryUploadOptions() {
+  return {
+    folder: 'womens-emporium/categories',
+    format: 'webp',
+    transformation: [
+      { width: 512, height: 512, crop: 'limit' },
+      { quality: 'auto:good' },
+    ],
+  };
+}
 
 const router = express.Router();
 
@@ -84,11 +130,15 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
     if (req.file && process.env.CLOUDINARY_CLOUD_NAME) {
       const result = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: 'womens-emporium/categories' },
+          categoryUploadOptions(),
           (err, result) => (err ? reject(err) : resolve(result))
         );
         stream.end(req.file.buffer);
       });
+      if (Number(result?.bytes || 0) > MAX_UPLOAD_BYTES) {
+        if (result?.secure_url) await deleteCloudinaryImage(result.secure_url);
+        return res.status(400).json({ message: 'Category image is too large after optimization (max 500 KB).' });
+      }
       iconValue = result.secure_url;
     }
 
@@ -117,23 +167,27 @@ router.put('/:id', protect, upload.single('image'), async (req, res) => {
     if (description !== undefined) updateData.description = String(description).trim();
 
     if (req.file && process.env.CLOUDINARY_CLOUD_NAME) {
-      if (existing.icon && existing.icon.includes('cloudinary.com')) {
-        await deleteCloudinaryImage(existing.icon);
-      }
       const result = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: 'womens-emporium/categories' },
+          categoryUploadOptions(),
           (err, result) => (err ? reject(err) : resolve(result))
         );
         stream.end(req.file.buffer);
       });
+      if (Number(result?.bytes || 0) > MAX_UPLOAD_BYTES) {
+        if (result?.secure_url) await deleteCloudinaryImage(result.secure_url);
+        return res.status(400).json({ message: 'Category image is too large after optimization (max 500 KB).' });
+      }
       updateData.icon = result.secure_url;
+      if (existing.icon && existing.icon.includes('cloudinary.com')) {
+        await deleteCloudinaryImage(existing.icon);
+      }
     } else if (icon != null) {
       const trimmed = String(icon).trim() || '🛍️';
       if (existing.icon && existing.icon.includes('cloudinary.com')) {
         const isUrl = /^https?:\/\//i.test(trimmed);
         const replacingImage =
-          !isUrl || (isUrl && trimmed !== existing.icon);
+          !isUrl || (isUrl && trimmed !== existing.icon && !sameCloudinaryAsset(trimmed, existing.icon));
         if (replacingImage) {
           await deleteCloudinaryImage(existing.icon);
         }

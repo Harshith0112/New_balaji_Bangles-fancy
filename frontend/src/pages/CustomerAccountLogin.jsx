@@ -65,9 +65,17 @@ export default function CustomerAccountLogin() {
             <p className="text-xs text-gray-500 mt-1">{PHONE_10_HINT}</p>
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
+            <div className="flex items-baseline justify-between mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <Link
+                to="/customer/account/forgot"
+                className="text-xs text-rose-600 font-medium hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               id="password"
               type="password"

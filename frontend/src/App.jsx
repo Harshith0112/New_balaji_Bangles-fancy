@@ -19,6 +19,8 @@ import OrderPlaced from './pages/OrderPlaced';
 import CustomerAccountLogin from './pages/CustomerAccountLogin';
 import CustomerAccountRegister from './pages/CustomerAccountRegister';
 import CustomerAccount from './pages/CustomerAccount';
+import CustomerForgotPassword from './pages/CustomerForgotPassword';
+import CustomerResetPassword from './pages/CustomerResetPassword';
 import AdminLogin from './pages/AdminLogin';
 import AdminLayout from './components/AdminLayout';
 import {
@@ -30,6 +32,7 @@ import {
   AdminOrders,
 } from './pages/AdminDashboard';
 import AdminCoupons from './pages/AdminCoupons';
+import AdminPasswordManager from './pages/AdminPasswordManager';
 
 export default function App() {
   const [splashDone, setSplashDone] = useState(() =>
@@ -58,6 +61,8 @@ export default function App() {
           <Route path="order/placed/:orderId" element={<OrderPlaced />} />
           <Route path="customer/register" element={<CustomerAccountRegister />} />
           <Route path="customer/account/login" element={<CustomerAccountLogin />} />
+          <Route path="customer/account/forgot" element={<CustomerForgotPassword />} />
+          <Route path="customer/account/reset" element={<CustomerResetPassword />} />
           <Route path="customer/account" element={<CustomerAccount />} />
           <Route path="admin" element={<AdminLogin />} />
           <Route path="admin/dashboard" element={<AdminLayout />}>
@@ -68,6 +73,7 @@ export default function App() {
             <Route path="offer" element={<AdminOffer />} />
             <Route path="coupons" element={<AdminCoupons />} />
             <Route path="orders" element={<AdminOrders />} />
+            <Route path="password-manager" element={<AdminPasswordManager />} />
           </Route>
         </Route>
       </Routes>

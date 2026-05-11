@@ -5,9 +5,12 @@ import { parsePhone10Input, PHONE_10_HINT } from '../utils/phone10';
 
 const PHONE_KEY = 'nbf-customer-phone';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function CustomerAccountRegister() {
   const navigate = useNavigate();
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -18,8 +21,13 @@ export default function CustomerAccountRegister() {
     e.preventDefault();
     setError('');
     const digits = parsePhone10Input(phone);
+    const emailTrim = email.trim().toLowerCase();
     if (!name.trim()) {
       setError('Enter your name.');
+      return;
+    }
+    if (!EMAIL_RE.test(emailTrim)) {
+      setError('Enter a valid email address.');
       return;
     }
     if (digits.length !== 10) {
@@ -37,7 +45,12 @@ export default function CustomerAccountRegister() {
 
     setLoading(true);
     try {
-      const out = await customerRegister({ name: name.trim(), phone: digits, password });
+      const out = await customerRegister({
+        name: name.trim(),
+        email: emailTrim,
+        phone: digits,
+        password,
+      });
       setCustomerToken(out.token);
       localStorage.setItem(PHONE_KEY, digits);
       navigate('/');
@@ -67,6 +80,22 @@ export default function CustomerAccountRegister() {
               className="w-full border border-rose-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-300"
               autoComplete="name"
             />
+          </div>
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full border border-rose-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-rose-300 focus:border-rose-300"
+              autoComplete="email"
+              spellCheck="false"
+            />
+            <p className="text-xs text-gray-500 mt-1">We send order confirmations and updates here.</p>
           </div>
           <div>
             <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">

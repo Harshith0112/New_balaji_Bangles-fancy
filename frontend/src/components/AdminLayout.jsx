@@ -74,7 +74,7 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-cream-50 flex">
       {/* Mobile: hamburger + top bar (only on small screens) */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center gap-3 p-3 bg-white border-b border-rose-100 shadow-sm">
+      <div className="md:hidden fixed top-[var(--site-header-height,0px)] left-0 right-0 z-50 flex items-center gap-3 p-3 bg-white border-b border-rose-100 shadow-sm">
         <button
           type="button"
           onClick={() => setSidebarOpen((o) => !o)}
@@ -102,10 +102,9 @@ export default function AdminLayout() {
 
       {/* Sidebar: slide-in on mobile, always visible on desktop */}
       <aside
-        className={`fixed md:relative inset-y-0 left-0 z-40 w-64 flex-shrink-0 bg-white border-r border-rose-100 flex flex-col transform transition-transform duration-200 ease-out ${
+        className={`fixed md:sticky top-[var(--site-header-height,0px)] bottom-0 md:bottom-auto left-0 z-30 w-64 md:h-[calc(100vh-var(--site-header-height,0px))] flex-shrink-0 bg-white border-r border-rose-100 flex flex-col transform transition-transform duration-200 ease-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
-        style={{ top: 0 }}
       >
         <div className="p-4 border-b border-rose-100 flex items-center justify-between">
           <div className="min-w-0">
@@ -151,6 +150,10 @@ export default function AdminLayout() {
           <NavLink to="/admin/dashboard/orders" className={navClass}>
             <span className="text-xl">📋</span>
             Orders
+          </NavLink>
+          <NavLink to="/admin/dashboard/password-manager" className={navClass}>
+            <span className="text-xl">🔐</span>
+            Password Manager
           </NavLink>
         </nav>
         <div className="p-3 border-t border-rose-100 space-y-1">

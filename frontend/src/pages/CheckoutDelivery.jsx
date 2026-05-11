@@ -49,6 +49,7 @@ export default function CheckoutDelivery() {
   const [customerPhone, setCustomerPhone] = useState(
     parsePhone10Input(initialCustomer.customerPhone || '')
   );
+  const [customerEmail, setCustomerEmail] = useState(initialCustomer.customerEmail || '');
 
   const token = getCustomerToken();
   const [customerAddresses, setCustomerAddresses] = useState([]);
@@ -68,6 +69,9 @@ export default function CheckoutDelivery() {
 
   const phoneDigits = useMemo(() => parsePhone10Input(customerPhone), [customerPhone]);
   const phoneValid = phoneDigits.length === 10;
+  const trimmedEmail = String(customerEmail || '').trim().toLowerCase();
+  const emailValid = !trimmedEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+  const guestEmailProvided = Boolean(token) || Boolean(trimmedEmail);
 
   const combinedAddress = useMemo(
     () => buildCombinedAddress({ doorNo, street, landmark, city }),
@@ -111,6 +115,7 @@ export default function CheckoutDelivery() {
         const me = out?.customer || {};
         if (me.name) setCustomerName(me.name);
         if (me.phone) setCustomerPhone(parsePhone10Input(me.phone));
+        if (me.email && !customerEmail) setCustomerEmail(String(me.email));
         const addrs = me.addresses || [];
         setCustomerAddresses(addrs);
 
@@ -188,6 +193,14 @@ export default function CheckoutDelivery() {
       alert('Please enter exactly 10 digits for mobile (do not include +91).');
       return;
     }
+    if (!token && !trimmedEmail) {
+      alert('Email is required for guest checkout.');
+      return;
+    }
+    if (!emailValid) {
+      alert('Email looks invalid. Either fix it or leave it blank.');
+      return;
+    }
     if (cartBlocked) {
       alert('Your cart has items that are out of stock or unavailable. Update your cart before continuing.');
       return;
@@ -198,6 +211,7 @@ export default function CheckoutDelivery() {
         customer: {
           customerName,
           customerPhone: phoneDigits,
+          customerEmail: trimmedEmail,
         },
       },
     });
@@ -383,12 +397,37 @@ export default function CheckoutDelivery() {
           <div className="pt-4 border-t border-rose-100">
             <h2 className="font-display text-sm font-bold text-rose-800 mb-3">Your contact (for online ordering)</h2>
             {token && phoneValid && !loadingCustomer ? (
-              <div className="border border-rose-100 bg-cream-50 rounded-2xl p-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-rose-700 mb-2">Logged in customer</p>
-                <p className="text-sm text-gray-800">
-                  <span className="font-medium">{customerName || '—'}</span> ·{' '}
-                  <span className="font-mono">{phoneDigits || '—'}</span>
-                </p>
+              <div className="space-y-3">
+                <div className="border border-rose-100 bg-cream-50 rounded-2xl p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-rose-700 mb-2">Logged in customer</p>
+                  <p className="text-sm text-gray-800">
+                    <span className="font-medium">{customerName || '—'}</span> ·{' '}
+                    <span className="font-mono">{phoneDigits || '—'}</span>
+                  </p>
+                  {customerEmail ? (
+                    <p className="text-xs text-gray-600 mt-1 break-all">{customerEmail}</p>
+                  ) : null}
+                </div>
+                {!customerEmail && (
+                  <div>
+                    <label htmlFor="customer-email" className="block text-sm font-medium text-gray-700 mb-1">
+                      Email (optional)
+                    </label>
+                    <input
+                      id="customer-email"
+                      type="email"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className={inputClass}
+                      autoComplete="email"
+                      spellCheck="false"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Add an email to get an order confirmation and status updates.
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -433,6 +472,26 @@ export default function CheckoutDelivery() {
                     {PHONE_10_HINT} Required for online ordering.
                   </p>
                 </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="customer-email" className="block text-sm font-medium text-gray-700 mb-1">
+                    Email {!token ? <span className="text-red-500">*</span> : '(optional)'}
+                  </label>
+                  <input
+                    id="customer-email"
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className={inputClass}
+                    autoComplete="email"
+                    spellCheck="false"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {!token
+                      ? 'Required for guest checkout. We send order confirmation and status updates here.'
+                      : 'Add an email to get an order confirmation and status updates.'}
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -443,7 +502,14 @@ export default function CheckoutDelivery() {
         <button
           type="button"
           onClick={handleContinueOnline}
-          disabled={!valid || !phoneValid || cartBlocked || (token && loadingCustomer)}
+          disabled={
+            !valid ||
+            !phoneValid ||
+            !guestEmailProvided ||
+            !emailValid ||
+            cartBlocked ||
+            (token && loadingCustomer)
+          }
           className="bg-green-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Place order

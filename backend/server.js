@@ -51,6 +51,26 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'NEW BALAJI BANGLES & FANCY API' });
 });
 
+// Ensure all upload/body-parser failures return JSON (not default HTML error page)
+app.use((err, req, res, next) => {
+  const message = err?.message || 'Server error';
+
+  if (err?.name === 'MulterError' || err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      message:
+        err?.code === 'LIMIT_FILE_SIZE'
+          ? 'File too large. Please upload a smaller image (max 5 MB before optimization).'
+          : message,
+    });
+  }
+
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ message: 'Invalid JSON body.' });
+  }
+
+  return res.status(500).json({ message });
+});
+
 // MongoDB connection
 mongoose
   .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/womens-emporium')

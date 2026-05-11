@@ -133,6 +133,8 @@ export default function ProductDetail() {
               src={images[selectedImage]}
               alt={product.name}
               className="w-full h-full object-cover"
+              loading="lazy"
+              decoding="async"
             />
           </div>
           {images.length > 1 && (
@@ -146,7 +148,7 @@ export default function ProductDetail() {
                     selectedImage === i ? 'border-rose-500' : 'border-transparent'
                   }`}
                 >
-                  <img src={img} alt="" className="w-full h-full object-cover" />
+                  <img src={img} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                 </button>
               ))}
             </div>

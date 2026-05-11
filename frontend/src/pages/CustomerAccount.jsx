@@ -7,12 +7,26 @@ import {
   customerMe,
   customerOrderDetail,
   customerOrders,
+  getProduct,
   getCustomerToken,
 } from '../api';
 import { formatOrderItemOptionsLine } from '../utils/orderItemOptions';
 
 function normalizeDigits(s) {
   return String(s || '').replace(/\D/g, '').slice(0, 15);
+}
+
+function cloudinaryOriginalFromOptimized(url) {
+  const raw = String(url || '').trim();
+  const marker = '/upload/';
+  if (!raw || !raw.includes('res.cloudinary.com') || !raw.includes(marker)) return raw;
+  const idx = raw.indexOf(marker);
+  const prefix = raw.slice(0, idx + marker.length);
+  const rest = raw.slice(idx + marker.length);
+  const firstSeg = rest.split('/')[0] || '';
+  const looksLikeTransform = /(^|,)(w_|h_|c_|q_|f_|dpr_|g_|ar_)/.test(firstSeg);
+  if (!looksLikeTransform || /^v\d+$/.test(firstSeg)) return raw;
+  return `${prefix}${rest.slice(firstSeg.length + 1)}`;
 }
 
 function statusBadgeClass(status) {
@@ -71,6 +85,7 @@ export default function CustomerAccount() {
 
   const [viewOrderDetail, setViewOrderDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [showOrders, setShowOrders] = useState(false);
   /** Mobile-only: collapsible “Add address” panel */
   const [mobileAddAddressOpen, setMobileAddAddressOpen] = useState(false);
 
@@ -162,6 +177,27 @@ export default function CustomerAccount() {
     }
   };
 
+  const handleOrderItemImageClick = async (item) => {
+    setError('');
+    const pid = String(item?.productId || '').trim();
+    if (!pid) {
+      setError('Product is not available.');
+      return;
+    }
+    try {
+      const p = await getProduct(pid);
+      // Allow navigation for out-of-stock items too; Product page will show stock state.
+      if (!p || p.visible === false) {
+        setError('Product is not available.');
+        return;
+      }
+      setViewOrderDetail(null);
+      navigate(`/product/${encodeURIComponent(pid)}`);
+    } catch {
+      setError('Product is not available.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12">
@@ -178,6 +214,13 @@ export default function CustomerAccount() {
           <p className="text-sm text-gray-600 mt-1">Profile, addresses, and order history.</p>
         </div>
         <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setShowOrders((v) => !v)}
+            className="px-4 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 transition text-sm font-medium"
+          >
+            {showOrders ? 'Hide Orders' : 'My Orders'}
+          </button>
           <button
             type="button"
             onClick={handleLogout}
@@ -197,6 +240,10 @@ export default function CustomerAccount() {
             <div className="flex justify-between gap-3">
               <span className="text-gray-500">Name</span>
               <span className="font-medium">{profile?.name || '—'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-gray-500">Email</span>
+              <span className="font-medium break-all text-right">{profile?.email || '—'}</span>
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-gray-500">Phone</span>
@@ -376,76 +423,80 @@ export default function CustomerAccount() {
         </div>
       </div>
 
-      {orders.length > 0 ? (
+      {showOrders ? (
         <div className="mt-6 bg-white rounded-2xl border border-rose-100 p-4 md:p-5">
           <h2 className="font-display text-xl font-bold text-rose-800 mb-4">Order history</h2>
-          <div className="space-y-3">
-            {orders.map((o) => (
-              <div key={o._id} className="border border-rose-100 rounded-xl p-4 bg-cream-50">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-rose-600">Order ID</p>
-                    <p className="font-mono text-lg font-bold text-gray-900">{o.orderId}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {o.createdAt
-                        ? new Date(o.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-                        : '—'}
-                    </p>
-                    <p className="text-sm font-semibold text-gray-800 mt-1">
-                      Total: ₹{Number(o.total || 0).toFixed(2)}
-                    </p>
-                  </div>
-                  <span
-                    className={`inline-block px-2.5 py-1 rounded-lg text-xs font-medium ${statusBadgeClass(o.status)}`}
-                  >
-                    {statusLabel(o.status)}
-                  </span>
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setError('');
-                      setDetailLoading(true);
-                      setViewOrderDetail({ loading: true });
-                      try {
-                        const { order: detail } = await customerOrderDetail(o._id);
-                        setViewOrderDetail(detail);
-                      } catch {
-                        setViewOrderDetail(null);
-                        setError('Could not load order details.');
-                      } finally {
-                        setDetailLoading(false);
-                      }
-                    }}
-                    disabled={detailLoading}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
-                  >
-                    View order
-                  </button>
-                  <Link
-                    to={`/track?order=${encodeURIComponent(o.orderId)}`}
-                    className="px-4 py-2 rounded-xl bg-rose-500 text-white text-sm font-medium hover:bg-rose-600 transition"
-                  >
-                    Track
-                  </Link>
-                  {o.trackingNumber || o.shippingCarrier ? (
-                    <span className="px-4 py-2 rounded-xl border border-teal-200 bg-teal-50 text-teal-900 text-sm font-medium space-y-1 inline-flex flex-col items-start">
-                      {o.trackingNumber ? (
-                        <span>
-                          Tracking: <span className="font-mono">{o.trackingNumber}</span>
-                        </span>
-                      ) : null}
-                      {o.shippingCarrier ? (
-                        <span className="text-teal-800">Shipped by: {o.shippingCarrier}</span>
-                      ) : null}
+          {orders.length > 0 ? (
+            <div className="space-y-3">
+              {orders.map((o) => (
+                <div key={o._id} className="border border-rose-100 rounded-xl p-4 bg-cream-50">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-rose-600">Order ID</p>
+                      <p className="font-mono text-lg font-bold text-gray-900">{o.orderId}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {o.createdAt
+                          ? new Date(o.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                          : '—'}
+                      </p>
+                      <p className="text-sm font-semibold text-gray-800 mt-1">
+                        Total: ₹{Number(o.total || 0).toFixed(2)}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-block px-2.5 py-1 rounded-lg text-xs font-medium ${statusBadgeClass(o.status)}`}
+                    >
+                      {statusLabel(o.status)}
                     </span>
-                  ) : null}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setError('');
+                        setDetailLoading(true);
+                        setViewOrderDetail({ loading: true });
+                        try {
+                          const { order: detail } = await customerOrderDetail(o._id);
+                          setViewOrderDetail(detail);
+                        } catch {
+                          setViewOrderDetail(null);
+                          setError('Could not load order details.');
+                        } finally {
+                          setDetailLoading(false);
+                        }
+                      }}
+                      disabled={detailLoading}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+                    >
+                      View order
+                    </button>
+                    <Link
+                      to={`/track?order=${encodeURIComponent(o.orderId)}`}
+                      className="px-4 py-2 rounded-xl bg-rose-500 text-white text-sm font-medium hover:bg-rose-600 transition"
+                    >
+                      Track
+                    </Link>
+                    {o.trackingNumber || o.shippingCarrier ? (
+                      <span className="px-4 py-2 rounded-xl border border-teal-200 bg-teal-50 text-teal-900 text-sm font-medium space-y-1 inline-flex flex-col items-start">
+                        {o.trackingNumber ? (
+                          <span>
+                            Tracking: <span className="font-mono">{o.trackingNumber}</span>
+                          </span>
+                        ) : null}
+                        {o.shippingCarrier ? (
+                          <span className="text-teal-800">Shipped by: {o.shippingCarrier}</span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600">No orders yet.</p>
+          )}
         </div>
       ) : null}
 
@@ -515,12 +566,28 @@ export default function CustomerAccount() {
                     const optionsLine = formatOrderItemOptionsLine(item.selectedOptions);
                     return (
                     <li key={idx} className="p-3 flex gap-3 items-start bg-cream-50/50">
-                      <img
-                        src={item.image || 'https://placehold.co/64x64/fce7f3/9f1239?text=•'}
-                        alt=""
-                        className="w-16 h-16 rounded-lg object-cover bg-cream-100 shrink-0 border border-rose-100"
-                        loading="lazy"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => handleOrderItemImageClick(item)}
+                        className="w-16 h-16 rounded-lg overflow-hidden bg-cream-100 shrink-0 border border-rose-100 hover:opacity-90 transition"
+                        title="Open product"
+                      >
+                        <img
+                          src={item.image || 'https://placehold.co/64x64/fce7f3/9f1239?text=•'}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onError={(e) => {
+                            const current = e.currentTarget.src || '';
+                            const fallback = cloudinaryOriginalFromOptimized(current);
+                            if (fallback && fallback !== current) {
+                              e.currentTarget.src = fallback;
+                              return;
+                            }
+                            e.currentTarget.src = 'https://placehold.co/64x64/fce7f3/9f1239?text=No+Image';
+                          }}
+                        />
+                      </button>
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-gray-900">{item.name}</p>
                         {optionsLine ? (

@@ -97,7 +97,7 @@ export default function Layout() {
   })();
 
   return (
-    <div className="min-h-screen flex flex-col bg-cream-50">
+    <div className="min-h-screen flex flex-col bg-cream-50" style={{ '--site-header-height': `${mobileMenuTopPx}px` }}>
       <header
         ref={headerRef}
         className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-rose-100 shadow-soft"

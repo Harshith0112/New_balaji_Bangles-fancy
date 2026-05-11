@@ -8,10 +8,42 @@ import { emitSiteDataUpdated } from '../siteSocket.js';
 // Helper function to extract Cloudinary public_id from URL
 function extractPublicId(url) {
   if (!url || typeof url !== 'string') return null;
-  // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{folder}/{public_id}.{format}
-  // or: https://res.cloudinary.com/{cloud_name}/image/upload/{folder}/{public_id}.{format}
-  const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
-  return match ? match[1] : null;
+  try {
+    const { pathname } = new URL(url);
+    const marker = '/upload/';
+    const markerIdx = pathname.indexOf(marker);
+    if (markerIdx === -1) return null;
+
+    const tail = pathname.slice(markerIdx + marker.length);
+    const segments = tail.split('/').filter(Boolean);
+    if (!segments.length) return null;
+
+    const looksLikeTransformSegment = (segment) =>
+      segment.includes(',') || /^(?:[a-z]{1,3}_.+|t_.+)$/.test(segment);
+
+    let start = 0;
+    while (start < segments.length && !/^v\d+$/.test(segments[start]) && looksLikeTransformSegment(segments[start])) {
+      start += 1;
+    }
+
+    if (start < segments.length && /^v\d+$/.test(segments[start])) {
+      start += 1;
+    }
+    if (start >= segments.length) return null;
+
+    const end = segments.length - 1;
+    const last = segments[end].replace(/\.[^.]+$/, '');
+    if (!last) return null;
+    return decodeURIComponent([...segments.slice(start, end), last].join('/'));
+  } catch {
+    return null;
+  }
+}
+
+function sameCloudinaryAsset(urlA, urlB) {
+  const a = extractPublicId(urlA);
+  const b = extractPublicId(urlB);
+  return !!a && !!b && a === b;
 }
 
 // Helper function to delete image from Cloudinary
@@ -36,6 +68,18 @@ const router = express.Router();
 
 // Multer memory storage for Cloudinary
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const MAX_UPLOAD_BYTES = 500 * 1024;
+
+function productUploadOptions() {
+  return {
+    folder: 'womens-emporium',
+    format: 'webp',
+    transformation: [
+      { width: 1600, height: 1600, crop: 'limit' },
+      { quality: 'auto:good' },
+    ],
+  };
+}
 
 // Helper to normalize options format (convert old string format to new object format)
 function normalizeProductOptions(product) {
@@ -204,11 +248,15 @@ router.post('/', protect, upload.array('images', 5), async (req, res) => {
       for (const file of req.files) {
         const result = await new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
-            { folder: 'womens-emporium' },
+            productUploadOptions(),
             (err, result) => (err ? reject(err) : resolve(result))
           );
           uploadStream.end(file.buffer);
         });
+        if (Number(result?.bytes || 0) > MAX_UPLOAD_BYTES) {
+          if (result?.secure_url) await deleteCloudinaryImage(result.secure_url);
+          return res.status(400).json({ message: 'One image is too large after optimization (max 500 KB).' });
+        }
         images.push(result.secure_url);
       }
     }
@@ -277,17 +325,23 @@ router.put('/:id', protect, upload.array('images', 5), async (req, res) => {
       for (const file of req.files) {
         const result = await new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(
-            { folder: 'womens-emporium' },
+            productUploadOptions(),
             (err, result) => (err ? reject(err) : resolve(result))
           );
           uploadStream.end(file.buffer);
         });
+        if (Number(result?.bytes || 0) > MAX_UPLOAD_BYTES) {
+          if (result?.secure_url) await deleteCloudinaryImage(result.secure_url);
+          return res.status(400).json({ message: 'One image is too large after optimization (max 500 KB).' });
+        }
         images.push(result.secure_url);
       }
     }
     
     // Delete removed images from Cloudinary
-    const imagesToDelete = oldImages.filter(img => !images.includes(img));
+    const imagesToDelete = oldImages.filter(
+      (img) => !images.some((currentImg) => currentImg === img || sameCloudinaryAsset(currentImg, img))
+    );
     for (const imgUrl of imagesToDelete) {
       await deleteCloudinaryImage(imgUrl);
     }

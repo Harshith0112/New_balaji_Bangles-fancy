@@ -22,6 +22,8 @@ const orderSchema = new mongoose.Schema(
     rawMessage: { type: String, default: '' },
     customerName: { type: String, default: '', trim: true },
     customerPhone: { type: String, default: '', trim: true },
+    /** Optional — used to send order-status emails via Resend */
+    customerEmail: { type: String, default: '', lowercase: true, trim: true },
     items: [orderItemSchema],
     total: { type: Number, required: true },
     /** Applied coupon (online checkout); discount in ₹ */

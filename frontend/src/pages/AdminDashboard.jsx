@@ -131,6 +131,8 @@ export function AdminProducts() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [stockFilter, setStockFilter] = useState('all');
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
@@ -177,24 +179,57 @@ export function AdminProducts() {
   if (loading) return <DashboardPage title="Products"><p className="text-gray-500">Loading...</p></DashboardPage>;
 
   const productSearchLower = productSearch.trim().toLowerCase();
-  const filteredProducts = productSearchLower
-    ? products.filter(
-        (p) =>
-          (p.name && p.name.toLowerCase().includes(productSearchLower)) ||
-          (p.nbfCode && String(p.nbfCode).toLowerCase().includes(productSearchLower))
-      )
-    : products;
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch =
+      !productSearchLower ||
+      (p.name && p.name.toLowerCase().includes(productSearchLower)) ||
+      (p.nbfCode && String(p.nbfCode).toLowerCase().includes(productSearchLower));
+
+    const productCategory = String(p.category || '').trim().toLowerCase();
+    const matchesCategory =
+      categoryFilter === 'all' || productCategory === String(categoryFilter).trim().toLowerCase();
+
+    const isOutOfStock = p.inStock === false;
+    const matchesStock =
+      stockFilter === 'all' ||
+      (stockFilter === 'out' ? isOutOfStock : !isOutOfStock);
+
+    return matchesSearch && matchesCategory && matchesStock;
+  });
 
   return (
     <DashboardPage title="Products">
       <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <input
-          type="text"
-          value={productSearch}
-          onChange={(e) => setProductSearch(e.target.value)}
-          placeholder="Search by name or NBF code..."
-          className="border border-rose-200 rounded-xl px-3 py-2.5 w-full sm:max-w-xs text-sm"
-        />
+        <div className="flex flex-col sm:flex-row gap-3 w-full">
+          <input
+            type="text"
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            placeholder="Search by name or NBF code..."
+            className="border border-rose-200 rounded-xl px-3 py-2.5 w-full sm:max-w-xs text-sm"
+          />
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="border border-rose-200 rounded-xl px-3 py-2.5 text-sm bg-white w-full sm:w-auto"
+          >
+            <option value="all">All categories</option>
+            {categories.map((c) => (
+              <option key={c._id || c.slug} value={c.slug || ''}>
+                {c.name || c.slug}
+              </option>
+            ))}
+          </select>
+          <select
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value)}
+            className="border border-rose-200 rounded-xl px-3 py-2.5 text-sm bg-white w-full sm:w-auto"
+          >
+            <option value="all">All stock</option>
+            <option value="in">In stock</option>
+            <option value="out">Out of stock</option>
+          </select>
+        </div>
         <button onClick={openAdd} className="bg-rose-500 text-white px-4 py-2.5 rounded-xl font-medium hover:bg-rose-600 touch-manipulation flex-shrink-0">
           Add Product
         </button>
@@ -628,25 +663,23 @@ export function AdminOrders() {
         />
       </div>
 
-      {/* Tabs: horizontal scroll on mobile, wrap on desktop */}
-      <div className="overflow-x-auto overflow-y-hidden -mx-4 px-4 md:mx-0 md:px-0 border-b border-rose-100 pb-4 mb-6">
-        <div className="flex gap-2 flex-nowrap md:flex-wrap min-w-0">
+      {/* Order category filter */}
+      <div className="border-b border-rose-100 pb-4 mb-6">
+        <label htmlFor="orders-filter" className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+          Category
+        </label>
+        <select
+          id="orders-filter"
+          value={ordersTab}
+          onChange={(e) => setOrdersTab(e.target.value)}
+          className="w-full sm:w-auto min-w-[260px] bg-white border border-rose-200 text-gray-700 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300"
+        >
           {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setOrdersTab(tab.id)}
-              className={`flex-shrink-0 px-3 py-2.5 md:px-4 rounded-xl text-sm font-medium transition touch-manipulation ${
-                ordersTab === tab.id
-                  ? 'bg-rose-500 text-white shadow'
-                  : 'bg-white border border-rose-200 text-gray-700 hover:bg-rose-50'
-              }`}
-            >
-              <span className="whitespace-nowrap">{tab.label}</span>
-              <span className={`ml-1 ${ordersTab === tab.id ? 'text-rose-100' : 'text-gray-500'}`}>({tab.count})</span>
-            </button>
+            <option key={tab.id} value={tab.id}>
+              {tab.label} ({tab.count})
+            </option>
           ))}
-        </div>
+        </select>
       </div>
 
       {loading ? (
@@ -1150,6 +1183,9 @@ function PackingChecklistModal({ order, onClose, onConfirm, onImageClick }) {
                 </button>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-800">{item.name}</p>
+                  {item.nbfCode ? (
+                    <p className="text-xs text-gray-500 mt-0.5">NBF: {item.nbfCode}</p>
+                  ) : null}
                   {optionsLine ? (
                     <p className="text-xs text-rose-800 mt-0.5 leading-snug">{optionsLine}</p>
                   ) : null}
@@ -1813,7 +1849,18 @@ function ProcessingTab({ formError, setFormError }) {
   );
 }
 
-function ConfirmOrderModal({ orderId, customerName, customerPhone, setCustomerName, setCustomerPhone, onClose, onConfirm, updating }) {
+function ConfirmOrderModal({
+  orderId,
+  customerName,
+  customerPhone,
+  shippingCharge,
+  setCustomerName,
+  setCustomerPhone,
+  setShippingCharge,
+  onClose,
+  onConfirm,
+  updating,
+}) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
@@ -1839,6 +1886,19 @@ function ConfirmOrderModal({ orderId, customerName, customerPhone, setCustomerNa
               placeholder="Enter phone number"
               className="w-full border border-rose-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-300"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Shipping charge (₹)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={shippingCharge}
+              onChange={(e) => setShippingCharge(e.target.value)}
+              placeholder="0.00"
+              className="w-full border border-rose-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-300"
+            />
+            <p className="text-xs text-gray-500 mt-1">This amount will be added to bill total and customer confirmation email.</p>
           </div>
         </div>
         <div className="flex gap-2 mt-6">
@@ -1877,6 +1937,7 @@ function OrderStatusActions({
   const [updatePopupOpen, setUpdatePopupOpen] = useState(false);
   const [confirmCustomerName, setConfirmCustomerName] = useState(order.customerName || '');
   const [confirmCustomerPhone, setConfirmCustomerPhone] = useState(order.customerPhone || '');
+  const [confirmShippingCharge, setConfirmShippingCharge] = useState(String(Number(order.shippingCharge || 0)));
   const status =
     order.status === 'completed' ? 'confirmed' : order.status === 'returned' ? 'returned' : order.status || 'pending';
   const paymentStatus = order.paymentStatus || 'pending';
@@ -1980,6 +2041,7 @@ function OrderStatusActions({
     setUpdatePopupOpen(false);
     setConfirmCustomerName(order.customerName || '');
     setConfirmCustomerPhone(order.customerPhone || '');
+    setConfirmShippingCharge(String(Number(order.shippingCharge || 0)));
     setShowConfirmModal(true);
   };
 
@@ -2106,6 +2168,7 @@ function OrderStatusActions({
                     setUpdatePopupOpen(false);
                     setConfirmCustomerName(order.customerName || '');
                     setConfirmCustomerPhone(order.customerPhone || '');
+                    setConfirmShippingCharge(String(Number(order.shippingCharge || 0)));
                     setShowConfirmModal(true);
                   }}
                   disabled={updatingOrderId === order._id}
@@ -2183,18 +2246,26 @@ function OrderStatusActions({
           orderId={order.orderId}
           customerName={confirmCustomerName}
           customerPhone={confirmCustomerPhone}
+          shippingCharge={confirmShippingCharge}
           setCustomerName={setConfirmCustomerName}
           setCustomerPhone={setConfirmCustomerPhone}
+          setShippingCharge={setConfirmShippingCharge}
           onClose={() => setShowConfirmModal(false)}
           onConfirm={async () => {
             setUpdatingOrderId(order._id);
             try {
               const nextCustomerName = confirmCustomerName.trim();
               const nextCustomerPhone = confirmCustomerPhone.trim();
+              const parsedShippingCharge = Number(confirmShippingCharge);
+              if (!Number.isFinite(parsedShippingCharge) || parsedShippingCharge < 0) {
+                alert('Please enter a valid non-negative shipping charge.');
+                return;
+              }
               await adminUpdateOrder(order._id, {
                 status: 'confirmed',
                 customerName: nextCustomerName,
                 customerPhone: nextCustomerPhone,
+                shippingCharge: parsedShippingCharge,
               });
               setShowConfirmModal(false);
               onUpdate();
@@ -2203,6 +2274,7 @@ function OrderStatusActions({
                 status: 'confirmed',
                 customerName: nextCustomerName,
                 customerPhone: nextCustomerPhone,
+                shippingCharge: parsedShippingCharge,
               });
             } catch (e) {
               alert(e.message || 'Failed to confirm order');

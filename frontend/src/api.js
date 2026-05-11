@@ -1,22 +1,99 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+const CLOUDINARY_TRANSFORM = 'f_auto,q_auto,dpr_auto,c_limit,w_1200';
+
+function optimizeCloudinaryImageUrl(url, transform = CLOUDINARY_TRANSFORM) {
+  const raw = String(url || '').trim();
+  if (!raw || !raw.includes('res.cloudinary.com') || !raw.includes('/upload/')) return raw;
+  const marker = '/upload/';
+  const idx = raw.indexOf(marker);
+  const prefix = raw.slice(0, idx + marker.length);
+  let rest = raw.slice(idx + marker.length);
+  const firstSeg = rest.split('/')[0] || '';
+  const looksLikeTransform = /(^|,)(w_|h_|c_|q_|f_|dpr_|g_|ar_)/.test(firstSeg);
+  if (looksLikeTransform && !/^v\d+$/.test(firstSeg)) {
+    rest = rest.slice(firstSeg.length + 1);
+  }
+  return `${prefix}${transform}/${rest}`;
+}
+
+function normalizeProductImage(p) {
+  if (!p || typeof p !== 'object') return p;
+  return {
+    ...p,
+    images: Array.isArray(p.images) ? p.images.map((u) => optimizeCloudinaryImageUrl(u)) : p.images,
+  };
+}
+
+function normalizeCategoryIcon(c) {
+  if (!c || typeof c !== 'object') return c;
+  return { ...c, icon: optimizeCloudinaryImageUrl(c.icon, 'f_auto,q_auto,dpr_auto,c_fill,w_128,h_128') };
+}
+
+function normalizeBannerImage(b) {
+  if (!b || typeof b !== 'object') return b;
+  return { ...b, image: optimizeCloudinaryImageUrl(b.image, 'f_auto,q_auto,dpr_auto,c_fill,w_1800,h_878') };
+}
+
+function normalizeOrderImages(orderPayload) {
+  if (!orderPayload || typeof orderPayload !== 'object') return orderPayload;
+  if (Array.isArray(orderPayload.orders)) {
+    return {
+      ...orderPayload,
+      orders: orderPayload.orders.map((o) => ({
+        ...o,
+        items: Array.isArray(o.items)
+          ? o.items.map((i) => ({ ...i, image: optimizeCloudinaryImageUrl(i.image, 'f_auto,q_auto,dpr_auto,c_fill,w_256,h_256') }))
+          : o.items,
+      })),
+    };
+  }
+  if (orderPayload.order && Array.isArray(orderPayload.order.items)) {
+    return {
+      ...orderPayload,
+      order: {
+        ...orderPayload.order,
+        items: orderPayload.order.items.map((i) => ({
+          ...i,
+          image: optimizeCloudinaryImageUrl(i.image, 'f_auto,q_auto,dpr_auto,c_fill,w_256,h_256'),
+        })),
+      },
+    };
+  }
+  return orderPayload;
+}
+
+async function readJsonSafe(res) {
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  return { text, data };
+}
+
 export async function getProducts(params = {}) {
   const q = new URLSearchParams(params).toString();
   const res = await fetch(`${API_BASE}/products${q ? `?${q}` : ''}`);
   if (!res.ok) throw new Error('Failed to fetch products');
-  return res.json();
+  const data = await res.json();
+  return Array.isArray(data) ? data.map(normalizeProductImage) : data;
 }
 
 export async function getProduct(id) {
   const res = await fetch(`${API_BASE}/products/${id}`);
   if (!res.ok) throw new Error('Product not found');
-  return res.json();
+  const data = await res.json();
+  return normalizeProductImage(data);
 }
 
 export async function getCategories() {
   const res = await fetch(`${API_BASE}/categories`);
   if (!res.ok) throw new Error('Failed to fetch categories');
-  return res.json();
+  const data = await res.json();
+  return Array.isArray(data) ? data.map(normalizeCategoryIcon) : data;
 }
 
 export async function getOffer() {
@@ -57,7 +134,7 @@ export function getOrdersByPhone(phone) {
     .then(async (res) => {
       const out = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(out.message || 'Failed to load orders');
-      return out;
+      return normalizeOrderImages(out);
     });
 }
 
@@ -167,14 +244,38 @@ export function clearCustomerToken() {
   localStorage.removeItem(CUSTOMER_TOKEN_KEY);
 }
 
-export function customerRegister({ name, phone, password }) {
+export function customerRegister({ name, email, phone, password }) {
   return fetch(`${API_BASE}/customers/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, phone, password }),
+    body: JSON.stringify({ name, email, phone, password }),
   }).then(async (res) => {
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.message || 'Registration failed');
+    return out;
+  });
+}
+
+export function customerForgotPassword({ phone, email }) {
+  return fetch(`${API_BASE}/customers/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, email }),
+  }).then(async (res) => {
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.message || 'Could not send reset link');
+    return out;
+  });
+}
+
+export function customerResetPassword({ token, password }) {
+  return fetch(`${API_BASE}/customers/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  }).then(async (res) => {
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.message || 'Could not reset password');
     return out;
   });
 }
@@ -237,7 +338,7 @@ export function customerOrders() {
   }).then(async (res) => {
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.message || 'Failed to load orders');
-    return out;
+    return normalizeOrderImages(out);
   });
 }
 
@@ -249,7 +350,7 @@ export function customerOrderDetail(id) {
   }).then(async (res) => {
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.message || 'Failed to load order');
-    return out;
+    return normalizeOrderImages(out);
   });
 }
 
@@ -276,6 +377,24 @@ export async function adminMe() {
   }
   const data = await res.json();
   return { ...data, unauthorized: false };
+}
+
+export function adminChangePassword(oldPassword, newPassword) {
+  return fetch(`${API_BASE}/admin/change-password`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ oldPassword, newPassword }),
+  }).then(async (res) => {
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const firstValidationError = Array.isArray(out.errors) && out.errors[0]?.msg ? out.errors[0].msg : '';
+      throw new Error(firstValidationError || out.message || 'Failed to change password');
+    }
+    return out;
+  });
 }
 
 export async function adminProducts(opts = {}) {
@@ -309,9 +428,10 @@ export function adminCreateProduct(formData) {
     method: 'POST',
     headers: { Authorization: `Bearer ${getToken()}` },
     body: formData,
-  }).then((res) => {
-    if (!res.ok) return res.json().then((d) => { throw new Error(d.message || 'Failed'); });
-    return res.json();
+  }).then(async (res) => {
+    const { text, data } = await readJsonSafe(res);
+    if (!res.ok) throw new Error((data && data.message) || text || 'Failed');
+    return data ?? {};
   });
 }
 
@@ -320,9 +440,10 @@ export function adminUpdateProduct(id, formData) {
     method: 'PUT',
     headers: { Authorization: `Bearer ${getToken()}` },
     body: formData,
-  }).then((res) => {
-    if (!res.ok) return res.json().then((d) => { throw new Error(d.message || 'Failed'); });
-    return res.json();
+  }).then(async (res) => {
+    const { text, data } = await readJsonSafe(res);
+    if (!res.ok) throw new Error((data && data.message) || text || 'Failed');
+    return data ?? {};
   });
 }
 
@@ -351,9 +472,10 @@ export function adminCreateCategory(data) {
       ...(isForm ? {} : { 'Content-Type': 'application/json' }),
     },
     body: isForm ? data : JSON.stringify(data),
-  }).then((res) => {
-    if (!res.ok) return res.json().then((d) => { throw new Error(d.message || 'Failed'); });
-    return res.json();
+  }).then(async (res) => {
+    const { text, data } = await readJsonSafe(res);
+    if (!res.ok) throw new Error((data && data.message) || text || 'Failed');
+    return data ?? {};
   });
 }
 
@@ -367,9 +489,10 @@ export function adminUpdateCategory(id, data) {
       ...(isForm ? {} : { 'Content-Type': 'application/json' }),
     },
     body: isForm ? data : JSON.stringify(data),
-  }).then((res) => {
-    if (!res.ok) return res.json().then((d) => { throw new Error(d.message || 'Failed'); });
-    return res.json();
+  }).then(async (res) => {
+    const { text, data } = await readJsonSafe(res);
+    if (!res.ok) throw new Error((data && data.message) || text || 'Failed');
+    return data ?? {};
   });
 }
 
@@ -387,7 +510,8 @@ export function adminDeleteCategory(id) {
 export async function getBanners() {
   const res = await fetch(`${API_BASE}/banners`);
   if (!res.ok) throw new Error('Failed to fetch banners');
-  return res.json();
+  const data = await res.json();
+  return Array.isArray(data) ? data.map(normalizeBannerImage) : data;
 }
 
 export async function adminGetBanners() {
@@ -395,7 +519,8 @@ export async function adminGetBanners() {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Failed to fetch banners');
-  return res.json();
+  const data = await res.json();
+  return Array.isArray(data) ? data.map(normalizeBannerImage) : data;
 }
 
 export function adminCreateBanner(formData) {
@@ -403,9 +528,10 @@ export function adminCreateBanner(formData) {
     method: 'POST',
     headers: { Authorization: `Bearer ${getToken()}` },
     body: formData,
-  }).then((res) => {
-    if (!res.ok) return res.json().then((d) => { throw new Error(d.message || 'Failed'); });
-    return res.json();
+  }).then(async (res) => {
+    const { text, data } = await readJsonSafe(res);
+    if (!res.ok) throw new Error((data && data.message) || text || 'Failed');
+    return data ?? {};
   });
 }
 
@@ -414,9 +540,10 @@ export function adminUpdateBanner(id, formData) {
     method: 'PUT',
     headers: { Authorization: `Bearer ${getToken()}` },
     body: formData,
-  }).then((res) => {
-    if (!res.ok) return res.json().then((d) => { throw new Error(d.message || 'Failed'); });
-    return res.json();
+  }).then(async (res) => {
+    const { text, data } = await readJsonSafe(res);
+    if (!res.ok) throw new Error((data && data.message) || text || 'Failed');
+    return data ?? {};
   });
 }
 
@@ -464,7 +591,7 @@ export function adminGetOrders() {
     headers: { Authorization: `Bearer ${getToken()}` },
   }).then((res) => {
     if (!res.ok) return res.json().then((d) => { throw new Error(d.message || 'Failed'); });
-    return res.json();
+    return res.json().then((data) => normalizeOrderImages(data));
   });
 }
 
